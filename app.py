@@ -1,5 +1,4 @@
 import os
-import threading
 import json
 from datetime import datetime, timedelta
 from cs50 import SQL
@@ -8,7 +7,6 @@ from flask_session import Session
 from werkzeug.security import check_password_hash, generate_password_hash
 from flask_login import LoginManager, login_user, login_required, UserMixin, current_user, logout_user
 from werkzeug.utils import secure_filename
-import shutil
 from urllib.parse import unquote
 import subprocess
 
@@ -20,7 +18,7 @@ GLOBAL_CHAT_KEY = "1000"
 UPLOAD_BASE = os.path.join(os.getcwd(), "IMAGES")
 DOWNLOADS_FOLDER = os.path.join(os.getcwd(), "DOWNLOADS")
 ALLOWED_EXTENSIONS = {"gb"}
-HARDCODED_PASSWORD_HASH = generate_password_hash("h")  # Use a secure password!
+HARDCODED_PASSWORD_HASH = generate_password_hash("PocketMonstersShine123!")  # Use a secure password!
 
 # Downloadable files metadata
 DOWNLOADS_META = [
@@ -199,7 +197,16 @@ def save_uploaded_meta(meta_list):
 
 def git_push_downloads(commit_message="Update downloads"):
     repo_dir = os.getcwd()
+    github_token = os.environ.get("GITHUB_TOKEN")
+    github_user = os.environ.get("GITHUB_USER", "Arh48")  # Set this in your env or default to 'Arh48'
+    repo_name = "con2"
+    if not github_token:
+        print("GITHUB_TOKEN environment variable not set. Skipping git push.")
+        return False, "GITHUB_TOKEN not set"
+    remote_url = f"https://{github_token}@github.com/{github_user}/{repo_name}.git"
     try:
+        # Update the remote to use token authentication
+        subprocess.check_call(["git", "remote", "set-url", "origin", remote_url], cwd=repo_dir)
         subprocess.check_call(["git", "add", "DOWNLOADS"], cwd=repo_dir)
         try:
             subprocess.check_call(["git", "commit", "-m", commit_message], cwd=repo_dir)
@@ -207,9 +214,10 @@ def git_push_downloads(commit_message="Update downloads"):
             if "nothing to commit" in str(e):
                 return True, "Nothing new to commit."
             return False, f"Git commit error: {e}"
-        subprocess.check_call(["git", "push"], cwd=repo_dir)
+        subprocess.check_call(["git", "push", "origin", "main"], cwd=repo_dir)
         return True, "Pushed to git successfully."
     except subprocess.CalledProcessError as e:
+        print(f"Git error: {e}")
         return False, f"Git error: {e}"
 
 @app.route("/upload", methods=["GET", "POST"])
