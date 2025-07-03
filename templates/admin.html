@@ -80,6 +80,40 @@
         </form>
     </div>
 
+    <!-- Downloadable Files Management Table -->
+    <div class="card p-3 shadow-sm bg-light mt-4">
+        <h3 class="fw-semibold mb-3">Downloadable Files <span class="text-muted" style="font-size:12px;">(from /DOWNLOADS)</span></h3>
+        <button id="deleteSelectedDownloads" class="btn btn-danger d-none mb-2">Delete Selected Downloads</button>
+        <div class="table-responsive" style="max-height:400px;overflow:auto;">
+            <table class="table table-hover rounded align-middle">
+                <thead class="bg-warning text-dark">
+                    <tr>
+                        <th>Select</th>
+                        <th>Filename</th>
+                        <th>Description</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for file in downloads %}
+                    <tr>
+                        <td>
+                            <input type="checkbox" class="download-checkbox form-check-input" data-filename="{{ file.filename }}" style="display: none;">
+                        </td>
+                        <td>{{ file.filename }}</td>
+                        <td>{{ file.description }}</td>
+                        <td>
+                            <form action="/delete_download/{{ file.filename | urlencode }}" method="POST" style="display:inline;" onsubmit="return confirm('Delete file {{ file.filename }} from /DOWNLOADS?');">
+                                <button type="submit" class="btn btn-danger btn-sm">Delete</button>
+                            </form>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
     <!-- Image Management Table -->
     <div class="card p-3 shadow-sm bg-light mt-4">
         <h3 class="fw-semibold mb-3">Image Management <span class="text-muted" style="font-size:12px;">(from /IMAGES/&lt;key&gt;)</span></h3>
@@ -157,6 +191,7 @@
         const deleteChatButton = document.getElementById("deleteSelectedChats");
         const deleteImagesFoldersButton = document.getElementById("deleteSelectedImageFolders");
         const deleteImagesButton = document.getElementById("deleteSelectedImages");
+        const deleteDownloadsButton = document.getElementById("deleteSelectedDownloads");
         let editMode = false;
 
         editButton.addEventListener("click", function () {
@@ -166,8 +201,9 @@
             });
             if(deleteUserButton) deleteUserButton.classList.toggle("d-none", !editMode);
             if(deleteChatButton) deleteChatButton.classList.toggle("d-none", !editMode);
-            deleteImagesFoldersButton.classList.toggle("d-none", !editMode);
-            deleteImagesButton.classList.toggle("d-none", !editMode);
+            if(deleteImagesFoldersButton) deleteImagesFoldersButton.classList.toggle("d-none", !editMode);
+            if(deleteImagesButton) deleteImagesButton.classList.toggle("d-none", !editMode);
+            if(deleteDownloadsButton) deleteDownloadsButton.classList.toggle("d-none", !editMode);
         });
 
         if(deleteUserButton){
@@ -218,6 +254,19 @@
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
                         body: JSON.stringify({ images: selectedImages })
+                    }).then(() => location.reload());
+                }
+            });
+        }
+
+        if(deleteDownloadsButton){
+            deleteDownloadsButton.addEventListener("click", function () {
+                const selectedDownloads = [...document.querySelectorAll(".download-checkbox:checked")].map(cb => cb.dataset.filename);
+                if (selectedDownloads.length > 0 && confirm("Are you sure you want to delete these files from /DOWNLOADS?")) {
+                    fetch("/delete_downloads", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ filenames: selectedDownloads })
                     }).then(() => location.reload());
                 }
             });
