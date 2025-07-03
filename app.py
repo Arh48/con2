@@ -273,13 +273,10 @@ def git_push_downloads(commit_message="Update downloads"):
 def admin():
     users = db.execute("SELECT * FROM users")
     group_chats = db.execute("SELECT * FROM group_chats")
-    # Load both static and uploaded downloads
     downloads = []
-    # Assume you have DOWNLOADS_META as a global (static downloads)
     if 'DOWNLOADS_META' in globals():
         downloads += DOWNLOADS_META
     downloads += load_uploaded_meta()
-    # Images: Load /IMAGES content as {folder: [images]}
     image_folders = {}
     images_base = os.path.join(os.getcwd(), "IMAGES")
     if os.path.exists(images_base):
@@ -295,6 +292,132 @@ def admin():
         image_folders=image_folders
     )
 
+@app.route("/delete_user/<username>", methods=["POST"])
+@login_required
+def delete_user(username):
+    db.execute("DELETE FROM users WHERE username = ?", username)
+    flash(f"User {username} deleted.", "success")
+    return redirect(url_for('admin'))
+
+@app.route("/delete_users", methods=["POST"])
+@login_required
+def delete_users():
+    data = request.get_json()
+    usernames = data.get("users", [])
+    for username in usernames:
+        db.execute("DELETE FROM users WHERE username = ?", username)
+    return jsonify({"success": True})
+
+@app.route("/delete_chat/<chatid>", methods=["POST"])
+@login_required
+def delete_chat(chatid):
+    db.execute("DELETE FROM group_chats WHERE id = ?", chatid)
+    flash(f"Chat {chatid} deleted.", "success")
+    return redirect(url_for('admin'))
+
+@app.route("/delete_chats", methods=["POST"])
+@login_required
+def delete_chats():
+    data = request.get_json()
+    chats = data.get("chats", [])
+    for chat_id in chats:
+        db.execute("DELETE FROM group_chats WHERE id = ?", chat_id)
+    return jsonify({"success": True})
+
+@app.route("/reset_messages", methods=["POST"])
+@login_required
+def reset_messages():
+    try:
+        with open("messages.json", "w") as f:
+            json.dump({}, f)
+        flash("All messages have been reset.", "success")
+        return jsonify({"success": True})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/delete_download/<filename>", methods=["POST"])
+@login_required
+def delete_download(filename):
+    filepath = os.path.join(DOWNLOADS_FOLDER, filename)
+    if os.path.exists(filepath):
+        os.remove(filepath)
+    meta_list = load_uploaded_meta()
+    new_meta_list = [m for m in meta_list if m['filename'] != filename]
+    if len(new_meta_list) != len(meta_list):
+        save_uploaded_meta(new_meta_list)
+    flash(f"Deleted {filename} from downloads.", "success")
+    return redirect(url_for('admin'))
+
+@app.route("/delete_downloads", methods=["POST"])
+@login_required
+def delete_downloads():
+    data = request.get_json()
+    filenames = data.get("filenames", [])
+    meta_list = load_uploaded_meta()
+    new_meta_list = meta_list[:]
+    for filename in filenames:
+        filepath = os.path.join(DOWNLOADS_FOLDER, filename)
+        if os.path.exists(filepath):
+            os.remove(filepath)
+        new_meta_list = [m for m in new_meta_list if m['filename'] != filename]
+    save_uploaded_meta(new_meta_list)
+    return jsonify({"success": True})
+
+@app.route("/delete_images_folder/<key>", methods=["POST"])
+@login_required
+def delete_images_folder(key):
+    images_base = os.path.join(os.getcwd(), "IMAGES")
+    folder_path = os.path.join(images_base, key)
+    if os.path.exists(folder_path) and os.path.isdir(folder_path):
+        for img in os.listdir(folder_path):
+            img_path = os.path.join(folder_path, img)
+            if os.path.isfile(img_path):
+                os.remove(img_path)
+        os.rmdir(folder_path)
+    flash(f"Deleted folder /IMAGES/{key}.", "success")
+    return redirect(url_for('admin'))
+
+@app.route("/delete_images_folders", methods=["POST"])
+@login_required
+def delete_images_folders():
+    data = request.get_json()
+    keys = data.get("keys", [])
+    images_base = os.path.join(os.getcwd(), "IMAGES")
+    for key in keys:
+        folder_path = os.path.join(images_base, key)
+        if os.path.exists(folder_path) and os.path.isdir(folder_path):
+            for img in os.listdir(folder_path):
+                img_path = os.path.join(folder_path, img)
+                if os.path.isfile(img_path):
+                    os.remove(img_path)
+            os.rmdir(folder_path)
+    return jsonify({"success": True})
+
+@app.route("/delete_image/<key>/<img>", methods=["POST"])
+@login_required
+def delete_image(key, img):
+    images_base = os.path.join(os.getcwd(), "IMAGES")
+    img_path = os.path.join(images_base, key, img)
+    if os.path.exists(img_path):
+        os.remove(img_path)
+    flash(f"Deleted image {img} from /IMAGES/{key}.", "success")
+    return redirect(url_for('admin'))
+
+@app.route("/delete_images", methods=["POST"])
+@login_required
+def delete_images():
+    data = request.get_json()
+    images = data.get("images", [])
+    images_base = os.path.join(os.getcwd(), "IMAGES")
+    for entry in images:
+        key = entry.get("key")
+        img = entry.get("image")
+        if key and img:
+            img_path = os.path.join(images_base, key, img)
+            if os.path.exists(img_path):
+                os.remove(img_path)
+    return jsonify({"success": True})
+    
 @app.route("/upload", methods=["GET", "POST"])
 @login_required
 def upload():
@@ -351,36 +474,6 @@ def download_file(filename):
         return "File not found.", 404
     log(f"Serving download: {filename}")
     return send_from_directory(DOWNLOADS_FOLDER, filename, as_attachment=True)
-
-@app.route("/delete_download/<filename>", methods=["POST"])
-@login_required
-def delete_download(filename):
-    # Remove file from DOWNLOADS folder
-    filepath = os.path.join(DOWNLOADS_FOLDER, filename)
-    if os.path.exists(filepath):
-        os.remove(filepath)
-    # Remove from uploaded meta
-    meta_list = load_uploaded_meta()
-    new_meta_list = [m for m in meta_list if m['filename'] != filename]
-    if len(new_meta_list) != len(meta_list):
-        save_uploaded_meta(new_meta_list)
-    flash(f"Deleted {filename} from downloads.", "success")
-    return redirect(url_for('admin'))
-
-@app.route("/delete_downloads", methods=["POST"])
-@login_required
-def delete_downloads():
-    data = request.get_json()
-    filenames = data.get("filenames", [])
-    meta_list = load_uploaded_meta()
-    new_meta_list = meta_list[:]
-    for filename in filenames:
-        filepath = os.path.join(DOWNLOADS_FOLDER, filename)
-        if os.path.exists(filepath):
-            os.remove(filepath)
-        new_meta_list = [m for m in new_meta_list if m['filename'] != filename]
-    save_uploaded_meta(new_meta_list)
-    return jsonify({"success": True})
 
 if __name__ == "__main__":
     log("App starting up...")
