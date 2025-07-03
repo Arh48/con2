@@ -36,15 +36,15 @@ HARDCODED_PASSWORD_HASH = generate_password_hash("PocketMonstersShine123!")  # U
 
 # Downloadable files metadata
 DOWNLOADS_META = [
-    {"filename": "shine v0.0.1.gb", "display": "Shine v0.0.1", "description": "First public alpha build."},
-    {"filename": "shine v0.0.2.gb", "display": "Shine v0.0.2", "description": "Minor bugfixes and improvements."},
-    {"filename": "shine v0.0.5.gb", "display": "Shine v0.0.5", "description": "Added new features and optimized performance."},
-    {"filename": "shine v0.0.6.gb", "display": "Shine v0.0.6", "description": "Improved controls and fixed save bug."},
-    {"filename": "shine v0.0.7.gb", "display": "Shine v0.0.7", "description": "New map area and music update."},
-    {"filename": "shine v0.0.8.gb", "display": "Shine v0.0.8", "description": "Gameplay balancing and minor graphical overhaul."},
-    {"filename": "shine v0.0.9.gb", "display": "Shine v0.0.9", "description": "Beta milestone: most major features present."},
-    {"filename": "shine v0.1.0.gb", "display": "Shine v0.1.0", "description": "First full release candidate."},
-    {"filename": "shine v0.1.1.gb", "display": "Shine v0.1.1", "description": "Latest patch: fixes, polish, and performance!"},
+    {"filename": "shine v0.0.1.gb", "display": "Shine v0.0.1", "description": "First alpha build."},
+    {"filename": "shine v0.0.2.gb", "display": "Shine v0.0.2", "description": "Added first map"},
+    {"filename": "shine v0.0.5.gb", "display": "Shine v0.0.5", "description": "Added new features"},
+    {"filename": "shine v0.0.6.gb", "display": "Shine v0.0.6", "description": "Added new features"},
+    {"filename": "shine v0.0.7.gb", "display": "Shine v0.0.7", "description": "Added new features"},
+    {"filename": "shine v0.0.8.gb", "display": "Shine v0.0.8", "description": "Added new features"},
+    {"filename": "shine v0.0.9.gb", "display": "Shine v0.0.9", "description": "Introduced Passwords: Password is 5972"},
+    {"filename": "shine v0.1.0.gb", "display": "Shine v0.1.0", "description": "Test of transition between scenes: Password is 8304"},
+    {"filename": "shine v0.1.1.gb", "display": "Shine v0.1.1", "description": "Smooth transition! Password is 7608"},
 ]
 
 # Flask setup
