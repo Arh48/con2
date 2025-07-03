@@ -625,7 +625,7 @@ def save_notes(notes_content):
         origin.push()
     except Exception as e:
         print("Git push error:", e)
-        
+
 
 @app.route("/notes", methods=["GET"])
 @login_required
@@ -638,6 +638,31 @@ def update_notes():
     notes_content = request.json.get("notes", "")
     save_notes(notes_content)
     return jsonify({"success": True})
+
+@app.route("/storage_usage")
+def storage_usage():
+    def get_folder_size(path):
+        total = 0
+        for dirpath, dirnames, filenames in os.walk(path):
+            for f in filenames:
+                fp = os.path.join(dirpath, f)
+                if os.path.isfile(fp):
+                    try:
+                        total += os.path.getsize(fp)
+                    except Exception:
+                        pass  # Ignore unreadable files
+        return total
+
+    app_root = os.path.dirname(os.path.abspath(__file__))
+    used = get_folder_size(app_root)
+    return jsonify({
+        "used_bytes": used,
+        "total_bytes": 1073741824  # 1GB
+    })
+
+
+
+
 
 if __name__ == "__main__":
     log("App starting up...")
