@@ -33,7 +33,7 @@ db = SQL("sqlite:///logins.db")
 GLOBAL_CHAT_KEY = "1000"
 UPLOAD_BASE = os.path.join(os.getcwd(), "IMAGES")
 DOWNLOADS_FOLDER = os.path.join(os.getcwd(), "DOWNLOADS")
-ALLOWED_EXTENSIONS = {"gb"}
+ALLOWED_EXTENSIONS = {"gb", "gbc", "gba"}  # <-- UPDATED to allow .gb, .gbc, .gba
 HARDCODED_PASSWORD_HASH = generate_password_hash("PocketMonstersShine123!")  # Use a secure password!
 
 # Downloadable files metadata

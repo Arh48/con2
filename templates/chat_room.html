@@ -389,18 +389,6 @@
         if (e.target === this) closeFullscreenImage();
     });
 
-    function checkTimeout() {
-        fetch("/check_timeout")
-            .then(response => response.json())
-            .then(data => {
-                if (data.timed_out) {
-                    window.location.href = "/chat";
-                }
-            })
-            .catch(error => console.error("Error checking timeout:", error));
-    }
-
-    setInterval(checkTimeout, 3000);
 
     // --- To-Do List logic ---
     function renderTodoList(list) {
