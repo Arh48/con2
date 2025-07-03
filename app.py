@@ -13,6 +13,7 @@ from urllib.parse import unquote
 from git import Repo, GitCommandError
 import shutil
 import requests
+import threading
 # --- LOGGING SETUP ---
 logging.basicConfig(
     level=logging.DEBUG,
@@ -670,6 +671,48 @@ def storage_usage():
     })
 
 
+UPLOAD_BASE = os.path.join(os.getcwd(), "IMAGES")
+
+def delete_file_later(path, seconds=300):
+    def remove():
+        try:
+            os.remove(path)
+            # Optionally also remove empty group folder if no files left
+            group_folder = os.path.dirname(path)
+            if not os.listdir(group_folder):
+                os.rmdir(group_folder)
+        except Exception as e:
+            print(f"Failed to delete {path}: {e}")
+    timer = threading.Timer(seconds, remove)
+    timer.start()
+
+
+
+@app.route("/IMAGES/<key>/", methods=["POST"])
+@login_required
+def upload_image(key):
+    if 'image' not in request.files:
+        return jsonify({"error": "No file part"}), 400
+    file = request.files['image']
+    if file.filename == '':
+        return jsonify({"error": "No selected file"}), 400
+
+    filename = secure_filename(file.filename)
+    group_path = os.path.join(UPLOAD_BASE, str(key))
+    os.makedirs(group_path, exist_ok=True)
+    full_path = os.path.join(group_path, filename)
+    file.save(full_path)
+
+    # Schedule deletion in 5 minutes (300 seconds)
+    delete_file_later(full_path, 300)
+
+    # URL for fetching the image (should match the one used in your JS)
+    image_url = url_for('serve_image', key=key, filename=filename)
+    return jsonify({"image_url": image_url})
+
+@app.route("/IMAGES/<key>/<filename>")
+def serve_image(key, filename):
+    return send_from_directory(os.path.join(UPLOAD_BASE, str(key)), filename)
 
 
 if __name__ == "__main__":
