@@ -639,22 +639,20 @@ def update_notes():
     save_notes(notes_content)
     return jsonify({"success": True})
 
+def get_directory_size(path):
+    total = 0
+    for dirpath, dirnames, filenames in os.walk(path):
+        for f in filenames:
+            fp = os.path.join(dirpath, f)
+            if os.path.isfile(fp):
+                print(fp)   # <--- SEE which files are being counted
+                total += os.path.getsize(fp)
+    return total
+
 @app.route("/storage_usage")
 def storage_usage():
-    def get_folder_size(path):
-        total = 0
-        for dirpath, dirnames, filenames in os.walk(path):
-            for f in filenames:
-                fp = os.path.join(dirpath, f)
-                if os.path.isfile(fp):
-                    try:
-                        total += os.path.getsize(fp)
-                    except Exception:
-                        pass  # Ignore unreadable files
-        return total
-
-    app_root = os.path.dirname(os.path.abspath(__file__))
-    used = get_folder_size(app_root)
+    app_root = os.path.dirname(os.path.abspath(__file__))  # Make sure this is your project root!
+    used = get_directory_size(app_root)
     return jsonify({
         "used_bytes": used,
         "total_bytes": 1073741824  # 1GB
