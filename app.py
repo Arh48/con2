@@ -345,7 +345,13 @@ def delete_download(filename):
     new_meta_list = [m for m in meta_list if m['filename'] != filename]
     if len(new_meta_list) != len(meta_list):
         save_uploaded_meta(new_meta_list)
-    flash(f"Deleted {filename} from downloads.", "success")
+    # --- GIT PUSH STEP ---
+    success, msg = git_push_downloads(f"User {current_user.username} deleted {filename}")
+    log(f"Git push result (delete): success={success}, msg={msg}")
+    if not success:
+        flash('File deleted, but git push failed: ' + msg, 'danger')
+    else:
+        flash(f"Deleted {filename} from downloads and pushed to git.", "success")
     return redirect(url_for('admin'))
 
 @app.route("/delete_downloads", methods=["POST"])
@@ -355,13 +361,22 @@ def delete_downloads():
     filenames = data.get("filenames", [])
     meta_list = load_uploaded_meta()
     new_meta_list = meta_list[:]
+    actually_deleted = []
     for filename in filenames:
         filepath = os.path.join(DOWNLOADS_FOLDER, filename)
         if os.path.exists(filepath):
             os.remove(filepath)
+            actually_deleted.append(filename)
         new_meta_list = [m for m in new_meta_list if m['filename'] != filename]
     save_uploaded_meta(new_meta_list)
-    return jsonify({"success": True})
+    # --- GIT PUSH STEP ---
+    if actually_deleted:
+        success, msg = git_push_downloads(f"User {current_user.username} deleted {', '.join(actually_deleted)}")
+        log(f"Git push result (bulk delete): success={success}, msg={msg}")
+    else:
+        success = True
+        msg = "No files actually deleted."
+    return jsonify({"success": success, "msg": msg})
 
 @app.route("/delete_images_folder/<key>", methods=["POST"])
 @login_required
