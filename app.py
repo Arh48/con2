@@ -192,16 +192,20 @@ def git_push_downloads(commit_message="Update downloads"):
     github_token = os.environ.get("GITHUB_TOKEN")
     github_user = os.environ.get("GITHUB_USER", "Arh48")
     repo_name = "con2"
+    REMOTE_NAME = "origin"  # You can change this to e.g. "autopush" if you want a custom remote
+
     if not github_token:
         print("GITHUB_TOKEN environment variable not set. Skipping git push.")
         return False, "GITHUB_TOKEN not set"
     remote_url = f"https://{github_token}@github.com/{github_user}/{repo_name}.git"
     try:
         repo = Repo(repo_dir)
-        if 'origin' in [remote.name for remote in repo.remotes]:
-            repo.remote('origin').set_url(remote_url)
+        remotes = [remote.name for remote in repo.remotes]
+        if REMOTE_NAME in remotes:
+            # Always set the remote URL (overwriting any previous setting)
+            repo.remote(REMOTE_NAME).set_url(remote_url)
         else:
-            repo.create_remote('origin', remote_url)
+            repo.create_remote(REMOTE_NAME, remote_url)
         repo.git.add('DOWNLOADS')
         try:
             repo.index.commit(commit_message)
@@ -209,7 +213,7 @@ def git_push_downloads(commit_message="Update downloads"):
             if "nothing to commit" in str(e):
                 return True, "Nothing new to commit."
             return False, f"Git commit error: {e}"
-        repo.remote('origin').push('main')
+        repo.remote(REMOTE_NAME).push('main')
         return True, "Pushed to git successfully."
     except Exception as e:
         print(f"Git error: {e}")
