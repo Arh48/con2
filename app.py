@@ -217,6 +217,21 @@ def git_push_downloads(commit_message="Update downloads"):
     remote_url = f"https://{github_token}@github.com/{github_user}/{repo_name}.git"
     try:
         repo = Repo(repo_dir)
+
+        # --------- FIX: Always checkout main branch first ----------
+        # If 'main' does not exist, fallback to 'master'
+        try:
+            repo.git.checkout('main')
+            log("Checked out 'main' branch")
+        except GitCommandError:
+            try:
+                repo.git.checkout('master')
+                log("Checked out 'master' branch (fallback)")
+            except GitCommandError:
+                log("ERROR: Neither 'main' nor 'master' branch exists!")
+                return False, "No main/master branch to push to!"
+        # ----------------------------------------------------------
+
         remotes = [remote.name for remote in repo.remotes]
         log(f"Existing remotes: {remotes}")
         if REMOTE_NAME in remotes:
@@ -235,12 +250,24 @@ def git_push_downloads(commit_message="Update downloads"):
                 return True, "Nothing new to commit."
             return False, f"Git commit error: {e}"
         log(f"Last 3 commits:\n{repo.git.log('--oneline', max_count=3)}")
-        push_result = repo.remote(REMOTE_NAME).push('main')
-        log(f"Push result: {push_result}")
+        # --------- FIX: push to main/master branch ----------
+        try:
+            repo.remote(REMOTE_NAME).push('main')
+            log("Pushed to remote 'main' branch")
+        except GitCommandError as e:
+            log(f"Push to 'main' failed: {e}, trying 'master'")
+            try:
+                repo.remote(REMOTE_NAME).push('master')
+                log("Pushed to remote 'master' branch")
+            except Exception as e:
+                log(f"Push to 'master' also failed: {e}")
+                return False, f"Push failed: {e}"
+        # ---------------------------------------------------
         return True, "Pushed to git successfully."
     except Exception as e:
         log(f"Git error: {e}")
         return False, f"Git error: {e}"
+    
 @app.route("/admin")
 @login_required
 def admin():
