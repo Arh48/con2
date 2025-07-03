@@ -1,0 +1,26 @@
+{% extends "layout.html" %}
+
+{% block title %}Choose Username{% endblock %}
+
+{% block main %}
+<div class="container mt-5">
+    <div class="row justify-content-center">
+        <div class="col-md-4">
+            <h2 class="mb-4 text-center">Choose Username</h2>
+            <form method="POST" action="{{ url_for('choose_username') }}">
+                <div class="mb-3">
+                    <label class="form-label">Select your username</label>
+                    <select class="form-select" name="username" required>
+                        <option value="h">h</option>
+                        <option value="olivia">olivia</option>
+                    </select>
+                </div>
+                <button type="submit" class="btn btn-primary w-100">Enter Chat</button>
+            </form>
+            {% if error %}
+            <div class="alert alert-danger mt-3">{{ error }}</div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}
