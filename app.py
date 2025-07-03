@@ -11,7 +11,8 @@ from flask_login import LoginManager, login_user, login_required, UserMixin, cur
 from werkzeug.utils import secure_filename
 from urllib.parse import unquote
 from git import Repo, GitCommandError
-
+import shutil
+import requests
 # --- LOGGING SETUP ---
 logging.basicConfig(
     level=logging.DEBUG,
@@ -489,6 +490,147 @@ def download_file(filename):
         return "File not found.", 404
     log(f"Serving download: {filename}")
     return send_from_directory(DOWNLOADS_FOLDER, filename, as_attachment=True)
+TODO_FILE = "todo.json"
+
+TODO_FILE = "todo.json"
+TODO_REPO_OWNER = "Arh48"
+TODO_REPO_NAME = "todo"
+TODO_REPO_FILE = "todo.json"
+TODO_REPO_BRANCH = "main"
+
+def fetch_todo_from_github():
+    """Fetch todo.json from the GitHub repo and save locally."""
+    url = f"https://raw.githubusercontent.com/{TODO_REPO_OWNER}/{TODO_REPO_NAME}/{TODO_REPO_BRANCH}/{TODO_REPO_FILE}"
+    try:
+        r = requests.get(url)
+        if r.status_code == 200:
+            todo = r.json()
+            with open(TODO_FILE, "w") as f:
+                json.dump(todo, f, indent=2)
+            return todo
+    except Exception as e:
+        print(f"Error fetching todo from GitHub: {e}")
+    return []
+
+def load_todo():
+    if not os.path.exists(TODO_FILE):
+        return fetch_todo_from_github()
+    try:
+        with open(TODO_FILE, "r") as f:
+            return json.load(f)
+    except Exception:
+        return []
+
+def save_todo(todo_list):
+    with open(TODO_FILE, "w") as f:
+        json.dump(todo_list, f, indent=2)
+    # Also update remote
+    github_token = os.environ.get("GITHUB_TOKEN")
+    if not github_token:
+        print("GITHUB_TOKEN not set, skipping remote push for todo.")
+        return
+    repo_dir = "/tmp/todo_repo"
+    remote_url = f"https://{github_token}@github.com/{TODO_REPO_OWNER}/{TODO_REPO_NAME}.git"
+    # Clone if doesn't exist
+    if not os.path.isdir(repo_dir):
+        if os.path.exists(repo_dir):
+            shutil.rmtree(repo_dir)
+        Repo.clone_from(remote_url, repo_dir, branch=TODO_REPO_BRANCH)
+    repo = Repo(repo_dir)
+    # Copy the file to the repo
+    shutil.copyfile(TODO_FILE, os.path.join(repo_dir, TODO_REPO_FILE))
+    repo.git.add(TODO_REPO_FILE)
+    try:
+        repo.index.commit(f"Update todo.json from chat app (by {getattr(current_user, 'username', 'unknown')})")
+    except GitCommandError as e:
+        if "nothing to commit" not in str(e):
+            print("Git commit error:", e)
+            return
+    try:
+        repo.remote().push()
+    except Exception as e:
+        print("Git push error:", e)
+
+@app.route("/todo", methods=["GET"])
+@login_required
+def get_todo():
+    return jsonify(load_todo())
+
+@app.route("/todo", methods=["POST"])
+@login_required
+def update_todo():
+    todo_list = request.json.get("todo", [])
+    save_todo(todo_list)
+    return jsonify({"success": True})
+
+
+
+NOTES_FILE = "notes.json"
+NOTES_REPO_OWNER = "Arh48"
+NOTES_REPO_NAME = "todo"
+NOTES_REPO_FILE = "notes.json"
+NOTES_REPO_BRANCH = "main"
+
+def fetch_notes_from_github():
+    url = f"https://raw.githubusercontent.com/{NOTES_REPO_OWNER}/{NOTES_REPO_NAME}/{NOTES_REPO_BRANCH}/{NOTES_REPO_FILE}"
+    try:
+        r = requests.get(url)
+        if r.status_code == 200:
+            notes = r.json()
+            with open(NOTES_FILE, "w") as f:
+                json.dump(notes, f, indent=2)
+            return notes
+    except Exception as e:
+        print(f"Error fetching notes from GitHub: {e}")
+    return ""
+
+def load_notes():
+    if not os.path.exists(NOTES_FILE):
+        return fetch_notes_from_github()
+    try:
+        with open(NOTES_FILE, "r") as f:
+            return json.load(f)
+    except Exception:
+        return ""
+
+def save_notes(notes_content):
+    with open(NOTES_FILE, "w") as f:
+        json.dump(notes_content, f, indent=2)
+    github_token = os.environ.get("GITHUB_TOKEN")
+    if not github_token:
+        print("GITHUB_TOKEN not set, skipping remote push for notes.")
+        return
+    repo_dir = "/tmp/notes_repo"
+    remote_url = f"https://{github_token}@github.com/{NOTES_REPO_OWNER}/{NOTES_REPO_NAME}.git"
+    if not os.path.isdir(repo_dir):
+        if os.path.exists(repo_dir):
+            shutil.rmtree(repo_dir)
+        Repo.clone_from(remote_url, repo_dir, branch=NOTES_REPO_BRANCH)
+    repo = Repo(repo_dir)
+    shutil.copyfile(NOTES_FILE, os.path.join(repo_dir, NOTES_REPO_FILE))
+    repo.git.add(NOTES_REPO_FILE)
+    try:
+        repo.index.commit(f"Update notes.json from chat app (by {getattr(current_user, 'username', 'unknown')})")
+    except GitCommandError as e:
+        if "nothing to commit" not in str(e):
+            print("Git commit error:", e)
+            return
+    try:
+        repo.remote().push()
+    except Exception as e:
+        print("Git push error:", e)
+
+@app.route("/notes", methods=["GET"])
+@login_required
+def get_notes():
+    return jsonify(load_notes())
+
+@app.route("/notes", methods=["POST"])
+@login_required
+def update_notes():
+    notes_content = request.json.get("notes", "")
+    save_notes(notes_content)
+    return jsonify({"success": True})
 
 if __name__ == "__main__":
     log("App starting up...")

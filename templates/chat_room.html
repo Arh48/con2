@@ -7,8 +7,9 @@
 {% block main %}
 <div class="container mt-4">
   <div class="row">
+    <!-- Left column: Downloads, To-Do, Notes -->
     <div class="col-lg-6 col-md-5 d-none d-md-block">
-      <!-- Placeholder for your game, info, or any other homepage content -->
+      <!-- Downloads Dropdown -->
       <div class="dropdown mb-2">
         <button class="btn btn-secondary dropdown-toggle w-100" type="button" id="downloadDropdown" data-bs-toggle="dropdown" aria-expanded="false">
           Download Files
@@ -27,7 +28,27 @@
           {% endfor %}
         </ul>
       </div>
+      <!-- To-Do List -->
+      <div class="card mt-4 p-3 shadow-sm bg-light">
+        <h5 class="mb-3">📝 To-Do List</h5>
+        <div id="todo-list" class="mb-2"></div>
+        <div class="input-group mb-2">
+          <input type="text" id="new-todo" class="form-control" placeholder="Add new task...">
+          <button class="btn btn-success" id="add-todo-btn">Add</button>
+        </div>
+        <button class="btn btn-outline-secondary btn-sm mb-2" id="edit-todo-btn">Edit as text</button>
+        <textarea id="edit-todo-area" class="form-control mb-2" style="display:none; min-height:120px"></textarea>
+        <button class="btn btn-primary btn-sm mb-2" id="save-todo-btn" style="display:none;">Save Changes</button>
+      </div>
+      <!-- Notes -->
+      <div class="card mt-4 p-3 shadow-sm bg-light">
+        <h5 class="mb-3">🗒️ Notes</h5>
+        <textarea id="notes-area" class="form-control mb-2" style="min-height:120px" placeholder="Write shared notes here..."></textarea>
+        <button class="btn btn-primary btn-sm mb-2" id="save-notes-btn">Save Notes</button>
+        <span id="notes-status" style="font-size:0.9em;color:gray;"></span>
+      </div>
     </div>
+    <!-- Main chat column -->
     <div class="col-lg-6 col-md-7 col-12">
       <div class="d-flex justify-content-between align-items-center">
         <h3 class="mb-0">Group Chat</h3>
@@ -61,8 +82,8 @@
         <button onclick="closeFullscreenImage()" style="position:absolute; top:32px; right:40px; font-size:2rem; background:transparent; border:none; color:white; z-index:20001;">&times;</button>
       </div>
     </div>
+    <!-- Below chat: Info/game for mobile -->
     <div class="col-12 d-md-none mt-4">
-      <!-- On mobile, show info/game content below chat -->
       <div class="p-4 h-100 d-flex flex-column justify-content-center align-items-center" style="background: rgba(240,240,240,0.7); border-radius: 16px;">
         <h2>Welcome to the Game Project!</h2>
         <p style="font-size: 1.1rem;">Here goes your game, project info, leaderboard, or any homepage content.</p>
@@ -159,9 +180,19 @@
     #fullscreenImageModal {
         display: flex;
     }
+    /* To-Do List extra */
+    #todo-list div:hover {
+        background: #f7f7f7;
+        border-radius: 6px;
+    }
+    #edit-todo-area {
+        font-family: monospace;
+        font-size: 1em;
+    }
 </style>
 
 <script>
+    // --- Chat logic ---
     const key = "{{ key }}";
     const messagesContainer = document.getElementById('messages');
     const newMessageIndicator = document.getElementById('newMessageIndicator');
@@ -370,5 +401,114 @@
     }
 
     setInterval(checkTimeout, 3000);
+
+    // --- To-Do List logic ---
+    function renderTodoList(list) {
+        const container = document.getElementById('todo-list');
+        container.innerHTML = '';
+        list.forEach((item, idx) => {
+            const div = document.createElement('div');
+            div.className = "d-flex align-items-center mb-1";
+            div.innerHTML = `
+              <input type="checkbox" ${item.done ? "checked" : ""} style="margin-right:8px;" data-idx="${idx}">
+              <span style="flex:1;${item.done?"text-decoration:line-through; color:#888;":""}">${item.text}</span>
+              <button class="btn btn-danger btn-sm ms-2" data-remove-idx="${idx}" title="Delete">🗑️</button>
+            `;
+            container.appendChild(div);
+        });
+    }
+
+    async function loadTodoList() {
+        const res = await fetch('/todo');
+        const list = await res.json();
+        renderTodoList(list);
+    }
+    async function saveTodoList(list) {
+        await fetch('/todo', {
+            method: "POST",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({todo: list})
+        });
+    }
+
+    document.addEventListener("DOMContentLoaded", () => {
+        let todoList = [];
+        const newTodo = document.getElementById('new-todo');
+        const addBtn = document.getElementById('add-todo-btn');
+        const editBtn = document.getElementById('edit-todo-btn');
+        const saveBtn = document.getElementById('save-todo-btn');
+        const editArea = document.getElementById('edit-todo-area');
+        const todoDiv = document.getElementById('todo-list');
+
+        function refresh() {
+            loadTodoList().then(() => {
+                fetch('/todo').then(r=>r.json()).then(list => todoList = list);
+            });
+        }
+        refresh();
+
+        addBtn.onclick = async () => {
+            if(newTodo.value.trim()) {
+                todoList.push({text: newTodo.value.trim(), done: false});
+                await saveTodoList(todoList);
+                newTodo.value = "";
+                refresh();
+            }
+        };
+        todoDiv.onclick = async (e) => {
+            if(e.target.matches('input[type=checkbox]')) {
+                const idx = +e.target.dataset.idx;
+                todoList[idx].done = e.target.checked;
+                await saveTodoList(todoList);
+                refresh();
+            } else if(e.target.dataset.removeIdx !== undefined) {
+                const idx = +e.target.dataset.removeIdx;
+                todoList.splice(idx,1);
+                await saveTodoList(todoList);
+                refresh();
+            }
+        };
+        editBtn.onclick = () => {
+            editArea.value = todoList.map(t => (t.done?"[x] ":"[ ] ") + t.text).join("\n");
+            editArea.style.display = saveBtn.style.display = "block";
+            editBtn.style.display = "none";
+        };
+        saveBtn.onclick = async () => {
+            // Parse lines: [x] or [ ] at start
+            todoList = editArea.value.split(/\n/).filter(Boolean).map(line => {
+                let done = /^\s*\[x\]/i.test(line);
+                let text = line.replace(/^\s*\[[x ]\]\s*/i,"");
+                return {text, done};
+            });
+            await saveTodoList(todoList);
+            editArea.style.display = saveBtn.style.display = "none";
+            editBtn.style.display = "inline-block";
+            refresh();
+        };
+
+        // --- Notes logic ---
+        const notesArea = document.getElementById('notes-area');
+        const saveNotesBtn = document.getElementById('save-notes-btn');
+        const notesStatus = document.getElementById('notes-status');
+
+        async function loadNotes() {
+            const res = await fetch('/notes');
+            const notes = await res.json();
+            notesArea.value = typeof notes === "string" ? notes : (Array.isArray(notes) ? notes.join('\n') : "");
+        }
+        loadNotes();
+
+        saveNotesBtn.onclick = async () => {
+            const notes = notesArea.value;
+            notesStatus.textContent = "Saving...";
+            await fetch('/notes', {
+                method: "POST",
+                headers: {"Content-Type": "application/json"},
+                body: JSON.stringify({notes: notes})
+            });
+            notesStatus.textContent = "Saved!";
+            setTimeout(() => notesStatus.textContent = "", 1500);
+        };
+    });
 </script>
 {% endblock %}
