@@ -1,65 +1,42 @@
 import os
-import sys
+import threading
+import random
 import json
-import logging
 from datetime import datetime, timedelta
 from cs50 import SQL
 from flask import Flask, flash, redirect, render_template, request, session, jsonify, url_for, send_from_directory
 from flask_session import Session
 from werkzeug.security import check_password_hash, generate_password_hash
-from flask_login import LoginManager, login_user, login_required, UserMixin, current_user, logout_user
+from flask_login import LoginManager, login_user, login_required, UserMixin, current_user
 from werkzeug.utils import secure_filename
+import shutil as shutil
 from urllib.parse import unquote
-from git import Repo, GitCommandError
-import shutil
-import requests
-# --- LOGGING SETUP ---
-logging.basicConfig(
-    level=logging.DEBUG,
-    format="%(asctime)s [%(levelname)s] %(message)s",
-)
-def log(msg):
-    print(f"[LOG] {msg}", flush=True)
-    logging.debug(msg)
-
-# Disable stdout buffering for Render
-sys.stdout.reconfigure(line_buffering=True)
-
+from flask import jsonify, request, redirect, url_for, flash, render_template
+import pickle
+from PIL import Image
+from flask import send_from_directory, abort, request, send_file
+import io
+import zipfile
+import os
+import mimetypes
+SETTINGS_DIR = "settings"
+os.makedirs(SETTINGS_DIR, exist_ok=True)
+os.makedirs(os.path.join("static", "profile_pics"), exist_ok=True)
 # Database setup
 db = SQL("sqlite:///logins.db")
 
-# Constants
-GLOBAL_CHAT_KEY = "1000"
-UPLOAD_BASE = os.path.join(os.getcwd(), "IMAGES")
-DOWNLOADS_FOLDER = os.path.join(os.getcwd(), "DOWNLOADS")
-ALLOWED_EXTENSIONS = {"gb"}
-HARDCODED_PASSWORD_HASH = generate_password_hash("PocketMonstersShine123!")  # Use a secure password!
-
-# Downloadable files metadata
-DOWNLOADS_META = [
-    {"filename": "shine v0.0.1.gb", "display": "Shine v0.0.1", "description": "First alpha build."},
-    {"filename": "shine v0.0.2.gb", "display": "Shine v0.0.2", "description": "Added first map"},
-    {"filename": "shine v0.0.5.gb", "display": "Shine v0.0.5", "description": "Added new features"},
-    {"filename": "shine v0.0.6.gb", "display": "Shine v0.0.6", "description": "Added new features"},
-    {"filename": "shine v0.0.7.gb", "display": "Shine v0.0.7", "description": "Added new features"},
-    {"filename": "shine v0.0.8.gb", "display": "Shine v0.0.8", "description": "Added new features"},
-    {"filename": "shine v0.0.9.gb", "display": "Shine v0.0.9", "description": "Introduced Passwords: Password is 5972"},
-    {"filename": "shine v0.1.0.gb", "display": "Shine v0.1.0", "description": "Test of transition between scenes: Password is 8304"},
-    {"filename": "shine v0.1.1.gb", "display": "Shine v0.1.1", "description": "Smooth transition! Password is 7608"},
-]
-
-# Flask setup
+# Configure application
 app = Flask(__name__)
 app.config["SESSION_PERMANENT"] = False
 app.config["SESSION_TYPE"] = "filesystem"
-app.config['UPLOADS_FOLDER'] = DOWNLOADS_FOLDER
-Session(app)
+Session(app) 
 
-# Login manager
+# Initialize LoginManager
 login_manager = LoginManager()
 login_manager.init_app(app)
 login_manager.login_view = "login"
 
+# User class for Flask-Login
 class User(UserMixin):
     pass
 
@@ -70,9 +47,16 @@ def load_user(user_id):
         user_obj = User()
         user_obj.id = user[0]['id']
         user_obj.username = user[0]['username']
-        user_obj.emoji = user[0].get('emoji', '🙂')
+        user_obj.emoji = user[0]['emoji']
         return user_obj
     return None
+
+@app.context_processor
+def inject_settings():
+    if current_user.is_authenticated:
+        user_settings = load_user_settings(current_user.id)
+        return dict(settings=user_settings)
+    return dict(settings=None)
 
 @app.after_request
 def after_request(response):
@@ -81,563 +65,210 @@ def after_request(response):
     response.headers["Pragma"] = "no-cache"
     return response
 
-def allowed_file(filename):
-    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+@app.route("/register", methods=["GET", "POST"])
+def register():
+    if request.method == "POST":
+        username = request.form.get('username')
+        password = request.form.get('password')
+        confirmation = request.form.get('confirmation')
+        emoji = request.form.get('emoji')
+
+        if not username or not password:
+            return render_template("error.html", message="Please fill in all fields.")
+
+        if password != confirmation:
+            return render_template("error.html", message="Passwords do not match.")
+
+        rows = db.execute("SELECT * FROM users WHERE username = ?", username)
+        if len(rows) > 0:
+            return render_template("error.html", message="Username already taken.")
+
+        hashed_password = generate_password_hash(password)
+        db.execute("INSERT INTO users (username, hash, emoji) VALUES (?, ?, ?)", username, hashed_password, emoji)
+
+        user = User()
+        user.id = db.execute("SELECT id FROM users WHERE username = ?", username)[0]["id"]
+        user.username = username
+        user.emoji = emoji
+        login_user(user)
+
+        return redirect("/")
+    else:
+        return render_template("register.html")
 
 @app.route("/login", methods=["GET", "POST"])
 def login():
-    if request.method == "POST":
-        password = request.form.get("password")
-        if not password or not check_password_hash(HARDCODED_PASSWORD_HASH, password):
-            return render_template("login.html", error="Incorrect password.")
-        session["password_ok"] = True
-        return redirect(url_for("choose_username"))
-    return render_template("login.html")
-
-@app.route("/logout")
-def logout():
-    logout_user()
     session.clear()
-    return redirect("/login")
 
-@app.route("/choose_username", methods=["GET", "POST"])
-def choose_username():
-    if not session.get("password_ok"):
-        return redirect(url_for("login"))
     if request.method == "POST":
-        username = request.form.get("username")
-        if username not in ["h", "olivia"]:
-            return render_template("choose_username.html", error="Please choose a valid username.")
-        rows = db.execute("SELECT * FROM users WHERE username = ?", username)
-        if not rows:
-            db.execute("INSERT INTO users (username, hash, emoji) VALUES (?, ?, ?)", username, generate_password_hash("placeholder"), "🙂")
-            rows = db.execute("SELECT * FROM users WHERE username = ?", username)
+        if not request.form.get("username"):
+            return render_template("error.html", message="Must provide username")
+        if not request.form.get("password"):
+            return render_template("error.html", message="Must provide password")
+
+        rows = db.execute("SELECT * FROM users WHERE username = ?", request.form.get("username"))
+
+        if len(rows) != 1 or not check_password_hash(rows[0]["hash"], request.form.get("password")):
+            return render_template("error.html", message="Invalid username or password")
+
         user = User()
         user.id = rows[0]["id"]
         user.username = rows[0]["username"]
-        user.emoji = rows[0].get("emoji", "🙂")
+        user.emoji = rows[0]["emoji"]
         login_user(user)
-        session.pop("password_ok", None)
-        return redirect(url_for("index"))
-    return render_template("choose_username.html")
 
-@app.route("/", methods=["GET"])
-@login_required
+        return redirect("/")
+    else:
+        return render_template("login.html")
+
+@app.route("/logout")
+def logout():
+    session.clear()
+    return redirect("/")
+
+@app.route("/")
 def index():
-    chat_group = db.execute("SELECT * FROM group_chats WHERE id = ?", GLOBAL_CHAT_KEY)
-    if not chat_group:
-        db.execute("INSERT INTO group_chats (id) VALUES (?)", GLOBAL_CHAT_KEY)
-    uploaded = load_uploaded_meta()
-    all_downloads = DOWNLOADS_META + uploaded
-    return render_template("chat_room.html", key=GLOBAL_CHAT_KEY, downloads=all_downloads)
+    if current_user.is_authenticated:
+        return render_template("index.html")
+    else:
+        
+        return render_template("home1.html")
+        
+
+
+@app.route("/generate", methods=['GET', 'POST'])
+@login_required
+def generate():
+    if request.method == 'POST':
+        while True:
+            h = random.randint(1000, 10000000)
+            existing_chat = db.execute("SELECT * FROM group_chats WHERE id = ?", h)
+            if not existing_chat:
+                break
+
+        db.execute("INSERT INTO group_chats (id) VALUES (?)", h)
+
+        return render_template("generate.html", key=h)
+    else:
+        return render_template("generate.html")
 
 @app.route("/messages/<key>")
 @login_required
 def get_messages(key):
     try:
-        if not os.path.exists("messages.json"):
-            with open("messages.json", "w") as file:
-                json.dump({}, file)
         with open("messages.json", "r") as file:
             data = json.load(file)
         return jsonify({"messages": data.get(key, [])})
     except Exception as e:
-        log(f"Error reading messages.json: {e}")
         return jsonify({"error": str(e)}), 500
+import re
+def extract_mentions(text):
+    """Extract @mentions from a message string."""
+    # Matches @username or @everyone, usernames must be word chars or underscores
+    return set(re.findall(r'@(\w+|everyone)', text or ""))
 
 @app.route("/chat_room/<key>", methods=['POST'])
 @login_required
 def post_message(key):
+    import uuid
     message = request.json.get('message', '')
     image_url = request.json.get('image_url', None)
+    reply_to = request.json.get('reply_to', None)
+
     if not message and not image_url:
         return jsonify({"error": "Message cannot be empty."}), 400
+
     try:
-        if not os.path.exists("messages.json"):
-            with open("messages.json", "w") as file:
-                json.dump({}, file)
         with open("messages.json", "r") as file:
             data = json.load(file)
+
         if key not in data:
             data[key] = []
+
+        user_settings = load_user_settings(current_user.id)
+        profile_pic = user_settings.get("profile_pic") or "default.png"
+        msg_id = str(uuid.uuid4())
+
+        # Detect mentions
+        mentions = extract_mentions(message)
+        mentioned_users = []
+        highlight = False
+
+        if "everyone" in mentions:
+            highlight = True
+            mentioned_users = [user['username'] for user in db.execute("SELECT username FROM users")]
+        else:
+            for username in mentions:
+                if username == current_user.username:
+                    continue
+                rows = db.execute("SELECT * FROM users WHERE username = ?", username)
+                if rows:
+                    mentioned_users.append(username)
+                    highlight = True
+
         msg_data = {
+            "id": msg_id,
             "username": current_user.username,
             "emoji": current_user.emoji,
-            "timestamp": datetime.now().isoformat()
+            "timestamp": datetime.now().isoformat() + "Z",
+            "profile_pic": profile_pic,
+            "highlight": highlight,  # <<--- THIS IS USED IN THE FRONTEND
+            "mentions": mentioned_users,
         }
         if message:
             msg_data["message"] = message
         if image_url:
             msg_data["image_url"] = image_url
+        if reply_to:
+            msg_data["reply_to"] = reply_to
+
         data[key].append(msg_data)
+
         with open("messages.json", "w") as file:
             json.dump(data, file)
-        log(f"Posted message: {msg_data}")
+
+        # Optionally: Trigger notifications here
         return jsonify({"success": True}), 200
     except Exception as e:
-        log(f"Error posting message: {e}")
+        print(f"Error posting message: {e}")
         return jsonify({"error": str(e)}), 500
-
-UPLOADED_META_FILE = os.path.join(DOWNLOADS_FOLDER, "downloads_uploaded.json")
-
-def load_uploaded_meta():
-    if not os.path.exists(UPLOADED_META_FILE):
-        log("No uploaded meta file found.")
-        return []
-    try:
-        with open(UPLOADED_META_FILE, "r") as f:
-            data = json.load(f)
-            log(f"Loaded uploaded meta: {data}")
-            return data
-    except Exception as e:
-        log(f"Error loading uploaded meta: {e}")
-        return []
-
-def save_uploaded_meta(meta_list):
-    try:
-        with open(UPLOADED_META_FILE, "w") as f:
-            json.dump(meta_list, f, indent=2)
-        log(f"Saved uploaded meta: {meta_list}")
-    except Exception as e:
-        log(f"Error saving uploaded meta: {e}")
-
-def git_push_downloads(commit_message="Update downloads"):
-    repo_dir = os.getcwd()
-    log(f"git_push_downloads called from dir: {repo_dir}")
-    log(f"Files in cwd: {os.listdir(repo_dir)}")
-    log(f".git exists? {os.path.isdir(os.path.join(repo_dir, '.git'))}")
-    log(f"DOWNLOADS exists? {os.path.isdir(DOWNLOADS_FOLDER)} - contents: {os.listdir(DOWNLOADS_FOLDER) if os.path.isdir(DOWNLOADS_FOLDER) else 'N/A'}")
-    github_token = os.environ.get("GITHUB_TOKEN")
-    github_user = os.environ.get("GITHUB_USER", "Arh48")
-    repo_name = "con2"
-    REMOTE_NAME = "autopush"
-
-    if not github_token:
-        log("GITHUB_TOKEN environment variable not set. Skipping git push.")
-        return False, "GITHUB_TOKEN not set"
-    remote_url = f"https://{github_token}@github.com/{github_user}/{repo_name}.git"
-    try:
-        repo = Repo(repo_dir)
-
-        # --------- FIX: Always checkout main branch first ----------
-        # If 'main' does not exist, fallback to 'master'
-        try:
-            repo.git.checkout('main')
-            log("Checked out 'main' branch")
-        except GitCommandError:
-            try:
-                repo.git.checkout('master')
-                log("Checked out 'master' branch (fallback)")
-            except GitCommandError:
-                log("ERROR: Neither 'main' nor 'master' branch exists!")
-                return False, "No main/master branch to push to!"
-        # ----------------------------------------------------------
-
-        remotes = [remote.name for remote in repo.remotes]
-        log(f"Existing remotes: {remotes}")
-        if REMOTE_NAME in remotes:
-            repo.delete_remote(repo.remote(REMOTE_NAME))
-            log(f"Deleted existing remote: {REMOTE_NAME}")
-        repo.create_remote(REMOTE_NAME, remote_url)
-        log(f"Added remote: {REMOTE_NAME} -> {remote_url}")
-        repo.git.add('DOWNLOADS')
-        log(f"Staged DOWNLOADS for commit. Status:\n{repo.git.status()}")
-        try:
-            commit = repo.index.commit(commit_message)
-            log(f"Commit made: {commit.hexsha} - {commit_message}")
-        except GitCommandError as e:
-            log(f"Git commit error: {e}")
-            if "nothing to commit" in str(e):
-                return True, "Nothing new to commit."
-            return False, f"Git commit error: {e}"
-        log(f"Last 3 commits:\n{repo.git.log('--oneline', max_count=3)}")
-        # --------- FIX: push to main/master branch ----------
-        try:
-            repo.remote(REMOTE_NAME).push('main')
-            log("Pushed to remote 'main' branch")
-        except GitCommandError as e:
-            log(f"Push to 'main' failed: {e}, trying 'master'")
-            try:
-                repo.remote(REMOTE_NAME).push('master')
-                log("Pushed to remote 'master' branch")
-            except Exception as e:
-                log(f"Push to 'master' also failed: {e}")
-                return False, f"Push failed: {e}"
-        # ---------------------------------------------------
-        return True, "Pushed to git successfully."
-    except Exception as e:
-        log(f"Git error: {e}")
-        return False, f"Git error: {e}"
     
-@app.route("/admin")
+@app.route("/delete_account", methods=["POST"])
 @login_required
-def admin():
-    users = db.execute("SELECT * FROM users")
-    group_chats = db.execute("SELECT * FROM group_chats")
-    downloads = []
-    if 'DOWNLOADS_META' in globals():
-        downloads += DOWNLOADS_META
-    downloads += load_uploaded_meta()
-    image_folders = {}
-    images_base = os.path.join(os.getcwd(), "IMAGES")
-    if os.path.exists(images_base):
-        for folder in os.listdir(images_base):
-            folder_path = os.path.join(images_base, folder)
-            if os.path.isdir(folder_path):
-                image_folders[folder] = [img for img in os.listdir(folder_path) if not img.startswith('.')]
-    return render_template(
-        "admin.html",
-        users=users,
-        group_chats=group_chats,
-        downloads=downloads,
-        image_folders=image_folders
-    )
+def delete_account():
+    db.execute("DELETE FROM users WHERE id = ?", current_user.id)
+    logout()
+    flash("Your account has been deleted.")
+    return redirect("/")
 
-@app.route("/delete_user/<username>", methods=["POST"])
+@app.route("/chat", methods=['GET', 'POST'])
 @login_required
-def delete_user(username):
-    db.execute("DELETE FROM users WHERE username = ?", username)
-    flash(f"User {username} deleted.", "success")
-    return redirect(url_for('admin'))
+def chat():
+    timeout_until = timeouts.get(current_user.username)
 
-@app.route("/delete_users", methods=["POST"])
-@login_required
-def delete_users():
-    data = request.get_json()
-    usernames = data.get("users", [])
-    for username in usernames:
-        db.execute("DELETE FROM users WHERE username = ?", username)
-    return jsonify({"success": True})
+    if timeout_until and datetime.now() < datetime.strptime(timeout_until, "%Y-%m-%d %H:%M:%S"):
+        return render_template("timeout.html", timeout_until=timeout_until)
 
-@app.route("/delete_chat/<chatid>", methods=["POST"])
-@login_required
-def delete_chat(chatid):
-    db.execute("DELETE FROM group_chats WHERE id = ?", chatid)
-    flash(f"Chat {chatid} deleted.", "success")
-    return redirect(url_for('admin'))
-
-@app.route("/delete_chats", methods=["POST"])
-@login_required
-def delete_chats():
-    data = request.get_json()
-    chats = data.get("chats", [])
-    for chat_id in chats:
-        db.execute("DELETE FROM group_chats WHERE id = ?", chat_id)
-    return jsonify({"success": True})
-
-@app.route("/reset_messages", methods=["POST"])
-@login_required
-def reset_messages():
-    try:
-        with open("messages.json", "w") as f:
-            json.dump({}, f)
-        flash("All messages have been reset.", "success")
-        return jsonify({"success": True})
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
-@app.route("/delete_download/<filename>", methods=["POST"])
-@login_required
-def delete_download(filename):
-    filepath = os.path.join(DOWNLOADS_FOLDER, filename)
-    if os.path.exists(filepath):
-        os.remove(filepath)
-    meta_list = load_uploaded_meta()
-    new_meta_list = [m for m in meta_list if m['filename'] != filename]
-    if len(new_meta_list) != len(meta_list):
-        save_uploaded_meta(new_meta_list)
-    # --- GIT PUSH STEP ---
-    success, msg = git_push_downloads(f"User {current_user.username} deleted {filename}")
-    log(f"Git push result (delete): success={success}, msg={msg}")
-    if not success:
-        flash('File deleted, but git push failed: ' + msg, 'danger')
-    else:
-        flash(f"Deleted {filename} from downloads and pushed to git.", "success")
-    return redirect(url_for('admin'))
-
-@app.route("/delete_downloads", methods=["POST"])
-@login_required
-def delete_downloads():
-    data = request.get_json()
-    filenames = data.get("filenames", [])
-    meta_list = load_uploaded_meta()
-    new_meta_list = meta_list[:]
-    actually_deleted = []
-    for filename in filenames:
-        filepath = os.path.join(DOWNLOADS_FOLDER, filename)
-        if os.path.exists(filepath):
-            os.remove(filepath)
-            actually_deleted.append(filename)
-        new_meta_list = [m for m in new_meta_list if m['filename'] != filename]
-    save_uploaded_meta(new_meta_list)
-    # --- GIT PUSH STEP ---
-    if actually_deleted:
-        success, msg = git_push_downloads(f"User {current_user.username} deleted {', '.join(actually_deleted)}")
-        log(f"Git push result (bulk delete): success={success}, msg={msg}")
-    else:
-        success = True
-        msg = "No files actually deleted."
-    return jsonify({"success": success, "msg": msg})
-
-@app.route("/delete_images_folder/<key>", methods=["POST"])
-@login_required
-def delete_images_folder(key):
-    images_base = os.path.join(os.getcwd(), "IMAGES")
-    folder_path = os.path.join(images_base, key)
-    if os.path.exists(folder_path) and os.path.isdir(folder_path):
-        for img in os.listdir(folder_path):
-            img_path = os.path.join(folder_path, img)
-            if os.path.isfile(img_path):
-                os.remove(img_path)
-        os.rmdir(folder_path)
-    flash(f"Deleted folder /IMAGES/{key}.", "success")
-    return redirect(url_for('admin'))
-
-@app.route("/delete_images_folders", methods=["POST"])
-@login_required
-def delete_images_folders():
-    data = request.get_json()
-    keys = data.get("keys", [])
-    images_base = os.path.join(os.getcwd(), "IMAGES")
-    for key in keys:
-        folder_path = os.path.join(images_base, key)
-        if os.path.exists(folder_path) and os.path.isdir(folder_path):
-            for img in os.listdir(folder_path):
-                img_path = os.path.join(folder_path, img)
-                if os.path.isfile(img_path):
-                    os.remove(img_path)
-            os.rmdir(folder_path)
-    return jsonify({"success": True})
-
-@app.route("/delete_image/<key>/<img>", methods=["POST"])
-@login_required
-def delete_image(key, img):
-    images_base = os.path.join(os.getcwd(), "IMAGES")
-    img_path = os.path.join(images_base, key, img)
-    if os.path.exists(img_path):
-        os.remove(img_path)
-    flash(f"Deleted image {img} from /IMAGES/{key}.", "success")
-    return redirect(url_for('admin'))
-
-@app.route("/delete_images", methods=["POST"])
-@login_required
-def delete_images():
-    data = request.get_json()
-    images = data.get("images", [])
-    images_base = os.path.join(os.getcwd(), "IMAGES")
-    for entry in images:
-        key = entry.get("key")
-        img = entry.get("image")
-        if key and img:
-            img_path = os.path.join(images_base, key, img)
-            if os.path.exists(img_path):
-                os.remove(img_path)
-    return jsonify({"success": True})
-    
-@app.route("/upload", methods=["GET", "POST"])
-@login_required
-def upload():
-    log(f"Entered /upload route with method {request.method}")
     if request.method == "POST":
-        if 'file' not in request.files:
-            log("No file part in request.files")
-            flash('No file part in the request.', 'danger')
-            return redirect(request.url)
-        file = request.files['file']
-        description = request.form.get('description', '').strip()
-        log(f"POST upload: filename={file.filename}, description={description}")
-        if file.filename == '':
-            log("No selected file.")
-            flash('No selected file.', 'danger')
-            return redirect(request.url)
-        if not allowed_file(file.filename):
-            log("File extension not allowed.")
-            flash('Only .gb files are allowed.', 'danger')
-            return redirect(request.url)
-        if not description:
-            log("Description not provided.")
-            flash('Description required.', 'danger')
-            return redirect(request.url)
-        filename = secure_filename(file.filename)
-        save_path = os.path.join(app.config['UPLOADS_FOLDER'], filename)
-        log(f"Saving file to: {save_path}")
-        file.save(save_path)
-        meta_list = load_uploaded_meta()
-        meta_list = [m for m in meta_list if m['filename'] != filename]
-        meta_list.append({
-            "filename": filename,
-            "display": filename,
-            "description": description
-        })
-        save_uploaded_meta(meta_list)
-        # --- GIT PUSH STEP ---
-        success, msg = git_push_downloads(f"User {current_user.username} uploaded {filename}")
-        log(f"Git push result: success={success}, msg={msg}")
-        if not success:
-            flash('File uploaded, but git push failed: ' + msg, 'danger')
-        else:
-            flash('File uploaded and pushed to git! ' + msg, 'success')
-        return redirect(request.url)
-    return render_template("upload.html")
+        key = request.form.get("key")
+        chat_group = db.execute("SELECT * FROM group_chats WHERE id = ?", key)
+        if len(chat_group) == 0:
+            return render_template("chat.html", error="Invalid key. Please try again.")
 
-@app.route("/download/<filename>")
+        return render_template("chat_room.html", key=key)
+
+    return render_template("chat.html")
+
+@app.route("/delete_chat/<chat_id>", methods=["POST"])
 @login_required
-def download_file(filename):
-    uploaded = load_uploaded_meta()
-    all_filenames = {meta["filename"] for meta in (DOWNLOADS_META + uploaded)}
-    if filename not in all_filenames:
-        log(f"Download requested for missing file: {filename}")
-        return "File not found.", 404
-    log(f"Serving download: {filename}")
-    return send_from_directory(DOWNLOADS_FOLDER, filename, as_attachment=True)
-TODO_FILE = "todo.json"
+def delete_chat(chat_id):
+    if current_user.username != "h":
+        flash("Access denied: Admin privileges required.")
+        return redirect("/admin")
 
-TODO_FILE = "todo.json"
-TODO_REPO_OWNER = "Arh48"
-TODO_REPO_NAME = "todo"
-TODO_REPO_FILE = "todo.json"
-TODO_REPO_BRANCH = "main"
-
-def fetch_todo_from_github():
-    """Fetch todo.json from the GitHub repo and save locally."""
-    url = f"https://raw.githubusercontent.com/{TODO_REPO_OWNER}/{TODO_REPO_NAME}/{TODO_REPO_BRANCH}/{TODO_REPO_FILE}"
-    try:
-        r = requests.get(url)
-        if r.status_code == 200:
-            todo = r.json()
-            with open(TODO_FILE, "w") as f:
-                json.dump(todo, f, indent=2)
-            return todo
-    except Exception as e:
-        print(f"Error fetching todo from GitHub: {e}")
-    return []
-
-def load_todo():
-    if not os.path.exists(TODO_FILE):
-        return fetch_todo_from_github()
-    try:
-        with open(TODO_FILE, "r") as f:
-            return json.load(f)
-    except Exception:
-        return []
-
-def save_todo(todo_list):
-    with open(TODO_FILE, "w") as f:
-        json.dump(todo_list, f, indent=2)
-    github_token = os.environ.get("GITHUB_TOKEN")
-    if not github_token:
-        print("GITHUB_TOKEN not set, skipping remote push for todo.")
-        return
-    repo_dir = "/tmp/todo_repo"
-    remote_url = f"https://{github_token}@github.com/{TODO_REPO_OWNER}/{TODO_REPO_NAME}.git"
-    if not os.path.isdir(repo_dir):
-        if os.path.exists(repo_dir):
-            shutil.rmtree(repo_dir)
-        Repo.clone_from(remote_url, repo_dir, branch=TODO_REPO_BRANCH)
-    repo = Repo(repo_dir)
-    # Always pull first to avoid non-fast-forward error
-    origin = repo.remote()
-    origin.pull(TODO_REPO_BRANCH)
-    shutil.copyfile(TODO_FILE, os.path.join(repo_dir, TODO_REPO_FILE))
-    repo.git.add(TODO_REPO_FILE)
-    try:
-        repo.index.commit(f"Update todo.json from chat app (by {getattr(current_user, 'username', 'unknown')})")
-    except GitCommandError as e:
-        if "nothing to commit" not in str(e):
-            print("Git commit error:", e)
-            return
-    try:
-        origin.push()
-    except Exception as e:
-        print("Git push error:", e)
-
-@app.route("/todo", methods=["GET"])
-@login_required
-def get_todo():
-    return jsonify(load_todo())
-
-@app.route("/todo", methods=["POST"])
-@login_required
-def update_todo():
-    todo_list = request.json.get("todo", [])
-    save_todo(todo_list)
-    return jsonify({"success": True})
-
-
-
-NOTES_FILE = "notes.json"
-NOTES_REPO_OWNER = "Arh48"
-NOTES_REPO_NAME = "todo"
-NOTES_REPO_FILE = "notes.json"
-NOTES_REPO_BRANCH = "main"
-
-def fetch_notes_from_github():
-    url = f"https://raw.githubusercontent.com/{NOTES_REPO_OWNER}/{NOTES_REPO_NAME}/{NOTES_REPO_BRANCH}/{NOTES_REPO_FILE}"
-    try:
-        r = requests.get(url)
-        if r.status_code == 200:
-            notes = r.json()
-            with open(NOTES_FILE, "w") as f:
-                json.dump(notes, f, indent=2)
-            return notes
-    except Exception as e:
-        print(f"Error fetching notes from GitHub: {e}")
-    return ""
-
-def load_notes():
-    if not os.path.exists(NOTES_FILE):
-        return fetch_notes_from_github()
-    try:
-        with open(NOTES_FILE, "r") as f:
-            return json.load(f)
-    except Exception:
-        return ""
-
-def save_notes(notes_content):
-    with open(NOTES_FILE, "w") as f:
-        json.dump(notes_content, f, indent=2)
-    github_token = os.environ.get("GITHUB_TOKEN")
-    if not github_token:
-        print("GITHUB_TOKEN not set, skipping remote push for notes.")
-        return
-    repo_dir = "/tmp/notes_repo"
-    remote_url = f"https://{github_token}@github.com/{NOTES_REPO_OWNER}/{NOTES_REPO_NAME}.git"
-    if not os.path.isdir(repo_dir):
-        if os.path.exists(repo_dir):
-            shutil.rmtree(repo_dir)
-        Repo.clone_from(remote_url, repo_dir, branch=NOTES_REPO_BRANCH)
-    repo = Repo(repo_dir)
-    origin = repo.remote()
-    # Always pull first to avoid non-fast-forward error
-    try:
-        origin.pull(NOTES_REPO_BRANCH)
-    except Exception as e:
-        print("Git pull error on notes:", e)
-    shutil.copyfile(NOTES_FILE, os.path.join(repo_dir, NOTES_REPO_FILE))
-    repo.git.add(NOTES_REPO_FILE)
-    try:
-        repo.index.commit(f"Update notes.json from chat app (by {getattr(current_user, 'username', 'unknown')})")
-    except GitCommandError as e:
-        if "nothing to commit" not in str(e):
-            print("Git commit error:", e)
-            return
-    try:
-        origin.push()
-    except Exception as e:
-        print("Git push error:", e)
-
-
-@app.route("/notes", methods=["GET"])
-@login_required
-def get_notes():
-    return jsonify(load_notes())
-
-@app.route("/notes", methods=["POST"])
-@login_required
-def update_notes():
-    notes_content = request.json.get("notes", "")
-    save_notes(notes_content)
-    return jsonify({"success": True})
+    db.execute("DELETE FROM group_chats WHERE id = ?", chat_id)
+    flash(f"Group chat '{chat_id}' has been deleted.")
+    return redirect("/admin")
 
 def get_directory_size(path):
     total = 0
@@ -645,33 +276,529 @@ def get_directory_size(path):
         for f in filenames:
             fp = os.path.join(dirpath, f)
             if os.path.isfile(fp):
-                print(fp)   # <--- SEE which files are being counted
                 total += os.path.getsize(fp)
     return total
 
-@app.route("/storage_usage")
-def storage_usage():
-    app_root = os.path.dirname(os.path.abspath(__file__))  # Make sure this is your project root!
-    used = get_directory_size(app_root)
-    return jsonify({
-        "used_bytes": used,
-        "total_bytes": 1073741824  # 1GB
-    })
+@app.route("/admin")
+@login_required
+def admin():
+    if current_user.username != "h":
+        flash("Access denied: Admin privileges required.")
+        return redirect("/")
+
+    users = db.execute("SELECT username, hash FROM users")
+    group_chats = db.execute("SELECT id FROM group_chats")
+    images_base = os.path.join(os.getcwd(), "IMAGES")
+    image_folders = {}
+    if os.path.isdir(images_base):
+        for key in os.listdir(images_base):
+            folder_path = os.path.join(images_base, key)
+            if os.path.isdir(folder_path):
+                files = [f for f in os.listdir(folder_path) if os.path.isfile(os.path.join(folder_path, f))]
+                image_folders[key] = files
+
+    # Calculate root directory size (the one with app.py)
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+
+    def get_directory_size(path):
+        total = 0
+        for dirpath, dirnames, filenames in os.walk(path):
+            for f in filenames:
+                fp = os.path.join(dirpath, f)
+                if os.path.isfile(fp):
+                    total += os.path.getsize(fp)
+        return total
+
+    root_size = get_directory_size(base_dir)
+    root_size_gb = root_size / (1024 ** 3)
+    percent_used = min(100, root_size / (1024 ** 3) * 100 / 1)  # out of 1GB
+
+    return render_template(
+        "admin.html",
+        users=users,
+        group_chats=group_chats,
+        image_folders=image_folders,
+        root_size=root_size,
+        root_size_gb=root_size_gb,
+        percent_used=percent_used
+    )
+
+@app.route('/delete_images_folder/<key>', methods=['POST'])
+@login_required
+def delete_images_folder(key):
+    if current_user.username != "h":
+        flash("Access denied: Admin privileges required.")
+        return redirect("/")
+    images_base = os.path.join(os.getcwd(), "IMAGES")
+    target = os.path.join(images_base, key)
+    if os.path.isdir(target):
+        shutil.rmtree(target)
+        flash(f"Deleted folder /IMAGES/{key}")
+    return redirect(url_for('admin'))
+
+@app.route('/delete_images_folders', methods=['POST'])
+@login_required
+def delete_images_folders():
+    if current_user.username != "h":
+        return jsonify(success=False, error="Access denied"), 403
+    data = request.get_json()
+    keys = data.get('keys', [])
+    images_base = os.path.join(os.getcwd(), "IMAGES")
+    for key in keys:
+        folder = os.path.join(images_base, key)
+        if os.path.isdir(folder):
+            shutil.rmtree(folder)
+    return jsonify(success=True)
+
+@app.route('/delete_image/<key>/<path:filename>', methods=['POST'])
+@login_required
+def delete_image(key, filename):
+    if current_user.username != "h":
+        flash("Access denied: Admin privileges required.")
+        return redirect("/")
+    images_base = os.path.join(os.getcwd(), "IMAGES")
+    decoded_filename = unquote(filename)
+    file_path = os.path.join(images_base, key, decoded_filename)
+    if os.path.isfile(file_path):
+        os.remove(file_path)
+        flash(f"Deleted image {decoded_filename} from folder {key}")
+    return redirect(url_for('admin'))
+
+@app.route('/delete_images', methods=['POST'])
+@login_required
+def delete_images():
+    if current_user.username != "h":
+        return jsonify(success=False, error="Access denied"), 403
+    data = request.get_json()
+    images = data.get('images', [])
+    images_base = os.path.join(os.getcwd(), "IMAGES")
+    for img in images:
+        key = img.get('key')
+        filename = img.get('image')
+        file_path = os.path.join(images_base, key, filename)
+        if os.path.isfile(file_path):
+            os.remove(file_path)
+    return jsonify(success=True)
+
+@app.route("/delete_user/<username>", methods=["POST"])
+@login_required
+def delete_user(username):
+    if current_user.username != "h":
+        flash("Access denied: Admin privileges required.")
+        return redirect("/admin")
+
+    db.execute("DELETE FROM users WHERE username = ?", username)
+    flash(f"User '{username}' has been deleted.")
+    return redirect("/admin")
+
+# --- IMAGE UPLOAD, SERVE, AND AUTO-DELETE ---
+UPLOAD_BASE = os.path.join(os.getcwd(), "IMAGES")
+
+def delete_file_later(path, seconds=300):
+    def remove():
+        try:
+            os.remove(path)
+            # Optionally also remove empty group folder if no files left
+            group_folder = os.path.dirname(path)
+            if not os.listdir(group_folder):
+                os.rmdir(group_folder)
+        except Exception as e:
+            print(f"Failed to delete {path}: {e}")
+    timer = threading.Timer(seconds, remove)
+    timer.start()
+
+@app.route("/IMAGES/<key>/", methods=["POST"])
+@login_required
+def upload_image(key):
+    if 'image' not in request.files:
+        return jsonify({"error": "No file part"}), 400
+    file = request.files['image']
+    if file.filename == '':
+        return jsonify({"error": "No selected file"}), 400
+
+    filename = secure_filename(file.filename)
+    group_path = os.path.join(UPLOAD_BASE, str(key))
+    os.makedirs(group_path, exist_ok=True)
+    full_path = os.path.join(group_path, filename)
+    file.save(full_path)
+
+    # Schedule deletion in 5 minutes (300 seconds)
+    delete_file_later(full_path, 300)
+
+    # URL for fetching the image (should match the one used in your JS)
+    image_url = url_for('serve_image', key=key, filename=filename)
+    return jsonify({"image_url": image_url})
+
+@app.route("/IMAGES/<key>/<filename>")
+def serve_image(key, filename):
+    return send_from_directory(os.path.join(UPLOAD_BASE, str(key)), filename)
+
+# --- END IMAGE UPLOAD SECTION ---
+
+from datetime import datetime, timedelta
+timeouts = {}
+
+@app.route("/mod", methods=["GET", "POST"])
+@login_required
+def mod_panel():
+    if current_user.username.strip() not in ["h", "Diimi", "bu", "ct"]:
+        flash("Access denied: Moderator privileges required.")
+        return redirect(url_for("index"))
+
+    if request.method == "POST":
+        username = request.form.get("username")
+        timeout_duration = int(request.form.get("timeout_duration"))
+
+        if timeout_duration < 1 or timeout_duration > 60:
+            flash("Invalid timeout duration! Choose between 1 and 60 minutes.")
+            return redirect(url_for("mod_panel"))
+
+        timeout_until = (datetime.now() + timedelta(minutes=timeout_duration)).strftime("%Y-%m-%d %H:%M:%S")
+        timeouts[username] = timeout_until
+
+        flash(f"User {username} has been timed out for {timeout_duration} minutes!")
+        return redirect(url_for("mod_panel"))
+
+    users = [{"username": user["username"]} for user in db.execute("SELECT username FROM users")]
+    return render_template("mod.html", users=users, timeouts=timeouts)
+
+@app.route("/check_timeout")
+@login_required
+def check_timeout():
+    timeout_until = timeouts.get(current_user.username)
+    if timeout_until and datetime.now() < datetime.strptime(timeout_until, "%Y-%m-%d %H:%M:%S"):
+        return jsonify({"timed_out": True})
+    return jsonify({"timed_out": False})
+
+@app.route("/timeout-canceled")
+@login_required
+def timeout_canceled():
+    timeout_until = timeouts.get(current_user.username)
+    # If user is NOT in timeouts, their timeout has been canceled (or expired)
+    if not timeout_until:
+        return jsonify({"timeout_canceled": True})
+    # If timeout is still in effect, return False
+    if datetime.now() < datetime.strptime(timeout_until, "%Y-%m-%d %H:%M:%S"):
+        return jsonify({"timeout_canceled": False})
+    # Timeout expired, remove from dict and return True
+    del timeouts[current_user.username]
+    return jsonify({"timeout_canceled": True})
+
+@app.route("/cancel_timeout/<username>", methods=["POST"])
+@login_required
+def cancel_timeout(username):
+    if current_user.username not in ["h", "ct", "bu", "Diimi"]:
+        flash("Access denied: Moderator privileges required.")
+        return redirect(url_for("mod_panel"))
+
+    if username in timeouts:
+        del timeouts[username]
+        flash(f"Timeout for {username} has been canceled.")
+    else:
+        flash(f"{username} is already active.")
+
+    return redirect(url_for("mod_panel"))
+
+@app.route("/reset_messages", methods=["POST"])
+@login_required
+def reset_messages():
+    if current_user.username != "h":
+        flash("Access denied: Admin privileges required.")
+        return redirect("/admin")
+    try:
+        with open("messages.json", "w") as file:
+            json.dump({}, file)
+        flash("All messages have been reset.")
+    except Exception as e:
+        flash(f"Error resetting messages: {str(e)}")
+    return redirect(url_for("admin"))
 
 
+
+
+DEFAULT_SETTINGS = {
+    "profile_pic": None,
+    "theme": "light",
+    "notifications": True,
+    "panic_url": "",
+}
+
+def get_settings_path(user_id):
+    return os.path.join(SETTINGS_DIR, f"settings_{user_id}.pkl")
+
+def load_user_settings(user_id):
+    path = get_settings_path(user_id)
+    if os.path.exists(path):
+        with open(path, "rb") as f:
+            return pickle.load(f)
+    return DEFAULT_SETTINGS.copy()
+
+def save_user_settings(user_id, settings):
+    path = get_settings_path(user_id)
+    with open(path, "wb") as f:
+        pickle.dump(settings, f)
+
+@app.route("/settings", methods=["GET", "POST"])
+@login_required
+def settings():
+    settings = load_user_settings(current_user.id)
+    if request.method == "POST":
+        # Handle profile picture upload
+        if "profile_pic" in request.files and request.files["profile_pic"].filename:
+            file = request.files["profile_pic"]
+            # Remove old profile picture if it exists and isn't default.png
+            old_pic = settings.get("profile_pic")
+            if old_pic and old_pic != "default.png":
+                old_path = os.path.join("static", "profile_pics", old_pic)
+                if os.path.exists(old_path):
+                    try:
+                        os.remove(old_path)
+                    except Exception as e:
+                        print(f"Failed to remove old profile picture: {e}")
+            # Save new profile picture and resize it
+            filename = f"profile_{current_user.id}_{secure_filename(file.filename)}"
+            filepath = os.path.join("static", "profile_pics", filename)
+            file.save(filepath)
+            # Resize to 100x100 using Pillow
+            try:
+                with Image.open(filepath) as im:
+                    im = im.convert("RGBA") if im.mode in ("P", "RGBA") else im.convert("RGB")
+                    im = im.resize((100, 100), Image.LANCZOS)
+                    im.save(filepath)
+            except Exception as e:
+                print(f"Error resizing profile picture: {e}")
+            settings["profile_pic"] = filename
+
+        # Theme selection
+        if request.form.get("theme") in ["light", "dark", "yellow"]:
+            settings["theme"] = request.form.get("theme")
+        
+        # Notifications
+        settings["notifications"] = request.form.get("notifications") == "on"
+
+        # Panic URL
+        settings["panic_url"] = request.form.get("panic_url", "")
+
+        # Password change
+        new_password = request.form.get("new_password")
+        if new_password:
+            hashed_password = generate_password_hash(new_password)
+            db.execute("UPDATE users SET hash = ? WHERE id = ?", hashed_password, current_user.id)
+            flash("Password changed!")
+
+        # Save settings
+        save_user_settings(current_user.id, settings)
+
+        from flask import make_response
+        resp = make_response(redirect(url_for("settings")))
+        resp.set_cookie("notifications_enabled", "1" if settings["notifications"] else "0")
+        flash("Settings updated!")
+        return resp
+
+    return render_template("settings.html", settings=settings, user=current_user)
+
+@app.route("/delete_profile_pic/<username>", methods=["POST"])
+@login_required
+def delete_profile_pic(username):
+    # Only admin can do this
+    if current_user.username != "h":
+        return jsonify(success=False, error="Access denied"), 403
+
+    # Find user id by username
+    user_row = db.execute("SELECT id FROM users WHERE username = ?", username)
+    if not user_row:
+        return jsonify(success=False, error="User not found"), 404
+    user_id = user_row[0]["id"]
+
+    # Load settings
+    user_settings = load_user_settings(user_id)
+    old_pic = user_settings.get("profile_pic")
+    if old_pic and old_pic != "default.png":
+        old_path = os.path.join("static", "profile_pics", old_pic)
+        if os.path.exists(old_path):
+            try:
+                os.remove(old_path)
+            except Exception as e:
+                print(f"Failed to remove profile picture: {e}")
+    user_settings["profile_pic"] = "default.png"
+    save_user_settings(user_id, user_settings)
+    return jsonify(success=True)
+
+
+from flask import jsonify, send_file
+
+
+import os
+import json
+from flask import request, jsonify
+from flask_login import login_required, current_user
+from datetime import datetime, timezone
+
+TYPING_FILE = "typing.json"
+
+def load_typing_data():
+    if not os.path.exists(TYPING_FILE):
+        return {}
+    with open(TYPING_FILE, "r") as f:
+        return json.load(f)
+
+def save_typing_data(data):
+    with open(TYPING_FILE, "w") as f:
+        json.dump(data, f)
+
+@app.route('/typing/<key>', methods=['POST'])
+@login_required
+def typing(key):
+    username = current_user.username
+    now = datetime.now(timezone.utc).isoformat()
+    data = load_typing_data()
+    if key not in data:
+        data[key] = {}
+    data[key][username] = now
+    save_typing_data(data)
+    return jsonify(success=True)
+
+@app.route('/typing_stop/<key>', methods=['POST'])
+@login_required
+def typing_stop(key):
+    username = current_user.username
+    data = load_typing_data()
+    if key in data and username in data[key]:
+        del data[key][username]
+        save_typing_data(data)
+    return jsonify(success=True)
+
+@app.route('/typing_status/<key>')
+@login_required
+def typing_status(key):
+    now = datetime.now(timezone.utc)
+    data = load_typing_data()
+    active_typers = []
+    changed = False
+    if key in data:
+        for username, last_time_str in list(data[key].items()):
+            last_time = datetime.fromisoformat(last_time_str)
+            if (now - last_time).total_seconds() > 3:
+                del data[key][username]
+                changed = True
+            else:
+                active_typers.append(username)
+        if changed:
+            save_typing_data(data)
+    return jsonify(typing=active_typers)
+
+@app.route('/terms')
+def terms_and_conditions():
+    return render_template('policy.html')
+
+def is_path_safe(base, target):
+    # Prevent directory traversal
+    return os.path.abspath(target).startswith(os.path.abspath(base))
+
+@app.route('/files', defaults={'req_path': ''})
+@app.route('/files/<path:req_path>')
+@login_required
+def files(req_path):
+    if current_user.username != "h":
+        abort(403)
+    BASE_DIR = os.path.dirname(os.path.abspath(__file__))  # <-- HERE
+    abs_path = os.path.join(BASE_DIR, req_path)
+    abs_path = os.path.abspath(abs_path)
+    # Security check
+    if not is_path_safe(BASE_DIR, abs_path):
+        abort(403)
+    if not os.path.exists(abs_path):
+        return render_template("file_explorer.html", files=[], folders=[], parent="", current=req_path, error="Path does not exist.")
+    if os.path.isfile(abs_path):
+        # Download file
+        return send_file(abs_path, as_attachment=True)
+    # Directory: list files and folders
+    items = os.listdir(abs_path)
+    files = []
+    folders = []
+    for item in items:
+        item_path = os.path.join(abs_path, item)
+        if os.path.isdir(item_path):
+            folders.append(item)
+        else:
+            files.append(item)
+    parent = os.path.dirname(req_path)
+    return render_template("file_explorer.html", files=files, folders=folders, parent=parent, current=req_path, error=None)
+
+@app.route('/files_download/<path:req_path>')
+@login_required
+def files_download(req_path):
+    if current_user.username != "h":
+        abort(403)
+    BASE_DIR = os.path.dirname(os.path.abspath(__file__))  # <-- HERE
+    abs_path = os.path.join(BASE_DIR, req_path)
+    abs_path = os.path.abspath(abs_path)
+    if not is_path_safe(BASE_DIR, abs_path):
+        abort(403)
+    if not os.path.exists(abs_path):
+        abort(404)
+    if os.path.isfile(abs_path):
+        return send_file(abs_path, as_attachment=True)
+    # If it's a directory, zip and send
+    zip_io = io.BytesIO()
+    with zipfile.ZipFile(zip_io, mode='w', compression=zipfile.ZIP_DEFLATED) as zf:
+        for root, dirs, files in os.walk(abs_path):
+            for file in files:
+                full_path = os.path.join(root, file)
+                rel_path = os.path.relpath(full_path, abs_path)
+                zf.write(full_path, arcname=rel_path)
+    zip_io.seek(0)
+    return send_file(zip_io, mimetype='application/zip', as_attachment=True, download_name=os.path.basename(abs_path) + ".zip")
+@app.route('/files_view/<path:req_path>')
+@login_required
+def files_view(req_path):
+    if current_user.username != "h":
+        abort(403)
+    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+    abs_path = os.path.abspath(os.path.join(BASE_DIR, req_path))
+    if not abs_path.startswith(BASE_DIR) or not os.path.isfile(abs_path):
+        abort(404)
+
+    # Get mimetype
+    mimetype, _ = mimetypes.guess_type(abs_path)
+    is_text = mimetype and mimetype.startswith("text")
+    is_image = mimetype and mimetype.startswith("image")
+
+    # Only allow small files to prevent huge loads
+    if os.path.getsize(abs_path) > 5 * 1024 * 1024:  # 5MB
+        return render_template("file_viewer.html", filename=req_path, error="File too large to display.", content=None, is_text=False, is_image=False, image_url=None)
+
+    if is_text:
+        try:
+            with open(abs_path, "r", encoding="utf-8", errors="replace") as f:
+                content = f.read()
+        except Exception as e:
+            return render_template("file_viewer.html", filename=req_path, error="Could not read file: " + str(e), content=None, is_text=False, is_image=False, image_url=None)
+        return render_template("file_viewer.html", filename=req_path, content=content, error=None, is_text=True, is_image=False, image_url=None)
+
+    if is_image:
+        # Serve the image via a direct URL
+        rel_path = os.path.relpath(abs_path, BASE_DIR)
+        image_url = url_for('files_view_image', req_path=rel_path)
+        return render_template("file_viewer.html", filename=req_path, content=None, error=None, is_text=False, is_image=True, image_url=image_url)
+
+    return render_template("file_viewer.html", filename=req_path, content=None, error="This file type cannot be displayed.", is_text=False, is_image=False, image_url=None)
+
+@app.route('/files_image/<path:req_path>')
+@login_required
+def files_view_image(req_path):
+    if current_user.username != "h":
+        abort(403)
+    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+    abs_path = os.path.abspath(os.path.join(BASE_DIR, req_path))
+    if not abs_path.startswith(BASE_DIR) or not os.path.isfile(abs_path):
+        abort(404)
+    return send_file(abs_path)
 
 
 
 if __name__ == "__main__":
-    log("App starting up...")
+    # Ensure IMAGES directory exists
     if not os.path.exists(UPLOAD_BASE):
         os.makedirs(UPLOAD_BASE)
-        log(f"Created UPLOAD_BASE: {UPLOAD_BASE}")
-    if not os.path.exists(DOWNLOADS_FOLDER):
-        os.makedirs(DOWNLOADS_FOLDER)
-        log(f"Created DOWNLOADS_FOLDER: {DOWNLOADS_FOLDER}")
-    chat_group = db.execute("SELECT * FROM group_chats WHERE id = ?", GLOBAL_CHAT_KEY)
-    if not chat_group:
-        db.execute("INSERT INTO group_chats (id) VALUES (?)", GLOBAL_CHAT_KEY)
-        log(f"Created initial group chat: {GLOBAL_CHAT_KEY}")
     app.run(debug=True)
