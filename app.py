@@ -8,7 +8,7 @@ from werkzeug.security import check_password_hash, generate_password_hash
 from flask_login import LoginManager, login_user, login_required, UserMixin, current_user, logout_user
 from werkzeug.utils import secure_filename
 from urllib.parse import unquote
-import subprocess
+from git import Repo, GitCommandError
 
 # Database setup
 db = SQL("sqlite:///logins.db")
@@ -82,15 +82,13 @@ def allowed_file(filename):
 
 @app.route("/login", methods=["GET", "POST"])
 def login():
-    # Step 1: Only ask for password
     if request.method == "POST":
         password = request.form.get("password")
         if not password or not check_password_hash(HARDCODED_PASSWORD_HASH, password):
             return render_template("login.html", error="Incorrect password.")
-        session["password_ok"] = True  # Mark password as verified in session
+        session["password_ok"] = True
         return redirect(url_for("choose_username"))
     return render_template("login.html")
-
 
 @app.route("/logout")
 def logout():
@@ -100,37 +98,31 @@ def logout():
 
 @app.route("/choose_username", methods=["GET", "POST"])
 def choose_username():
-    # Only allow if password step is complete
     if not session.get("password_ok"):
         return redirect(url_for("login"))
     if request.method == "POST":
         username = request.form.get("username")
         if username not in ["h", "olivia"]:
             return render_template("choose_username.html", error="Please choose a valid username.")
-        # Check if user exists
         rows = db.execute("SELECT * FROM users WHERE username = ?", username)
         if not rows:
-            # Create user with a random password (never used, just to satisfy schema)
             db.execute("INSERT INTO users (username, hash, emoji) VALUES (?, ?, ?)", username, generate_password_hash("placeholder"), "🙂")
             rows = db.execute("SELECT * FROM users WHERE username = ?", username)
-        # Log in the user
         user = User()
         user.id = rows[0]["id"]
         user.username = rows[0]["username"]
         user.emoji = rows[0].get("emoji", "🙂")
         login_user(user)
-        session.pop("password_ok", None)  # Clean up session
+        session.pop("password_ok", None)
         return redirect(url_for("index"))
     return render_template("choose_username.html")
 
 @app.route("/", methods=["GET"])
 @login_required
 def index():
-    # Ensure global chat exists
     chat_group = db.execute("SELECT * FROM group_chats WHERE id = ?", GLOBAL_CHAT_KEY)
     if not chat_group:
         db.execute("INSERT INTO group_chats (id) VALUES (?)", GLOBAL_CHAT_KEY)
-    # Load uploaded files and join with static downloads
     uploaded = load_uploaded_meta()
     all_downloads = DOWNLOADS_META + uploaded
     return render_template("chat_room.html", key=GLOBAL_CHAT_KEY, downloads=all_downloads)
@@ -198,25 +190,28 @@ def save_uploaded_meta(meta_list):
 def git_push_downloads(commit_message="Update downloads"):
     repo_dir = os.getcwd()
     github_token = os.environ.get("GITHUB_TOKEN")
-    github_user = os.environ.get("GITHUB_USER", "Arh48")  # Set this in your env or default to 'Arh48'
+    github_user = os.environ.get("GITHUB_USER", "Arh48")
     repo_name = "con2"
     if not github_token:
         print("GITHUB_TOKEN environment variable not set. Skipping git push.")
         return False, "GITHUB_TOKEN not set"
     remote_url = f"https://{github_token}@github.com/{github_user}/{repo_name}.git"
     try:
-        # Update the remote to use token authentication
-        subprocess.check_call(["git", "remote", "set-url", "origin", remote_url], cwd=repo_dir)
-        subprocess.check_call(["git", "add", "DOWNLOADS"], cwd=repo_dir)
+        repo = Repo(repo_dir)
+        if 'origin' in [remote.name for remote in repo.remotes]:
+            repo.remote('origin').set_url(remote_url)
+        else:
+            repo.create_remote('origin', remote_url)
+        repo.git.add('DOWNLOADS')
         try:
-            subprocess.check_call(["git", "commit", "-m", commit_message], cwd=repo_dir)
-        except subprocess.CalledProcessError as e:
+            repo.index.commit(commit_message)
+        except GitCommandError as e:
             if "nothing to commit" in str(e):
                 return True, "Nothing new to commit."
             return False, f"Git commit error: {e}"
-        subprocess.check_call(["git", "push", "origin", "main"], cwd=repo_dir)
+        repo.remote('origin').push('main')
         return True, "Pushed to git successfully."
-    except subprocess.CalledProcessError as e:
+    except Exception as e:
         print(f"Git error: {e}")
         return False, f"Git error: {e}"
 
@@ -241,7 +236,6 @@ def upload():
         filename = secure_filename(file.filename)
         save_path = os.path.join(app.config['UPLOADS_FOLDER'], filename)
         file.save(save_path)
-        # Save to uploaded meta
         meta_list = load_uploaded_meta()
         meta_list = [m for m in meta_list if m['filename'] != filename]
         meta_list.append({
@@ -262,7 +256,6 @@ def upload():
 @app.route("/download/<filename>")
 @login_required
 def download_file(filename):
-    # Accept any file that is in EITHER the static or uploaded list
     uploaded = load_uploaded_meta()
     all_filenames = {meta["filename"] for meta in (DOWNLOADS_META + uploaded)}
     if filename not in all_filenames:
@@ -274,7 +267,6 @@ if __name__ == "__main__":
         os.makedirs(UPLOAD_BASE)
     if not os.path.exists(DOWNLOADS_FOLDER):
         os.makedirs(DOWNLOADS_FOLDER)
-    # Ensure group chat 1000 exists
     chat_group = db.execute("SELECT * FROM group_chats WHERE id = ?", GLOBAL_CHAT_KEY)
     if not chat_group:
         db.execute("INSERT INTO group_chats (id) VALUES (?)", GLOBAL_CHAT_KEY)
