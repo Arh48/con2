@@ -524,20 +524,20 @@ def load_todo():
 def save_todo(todo_list):
     with open(TODO_FILE, "w") as f:
         json.dump(todo_list, f, indent=2)
-    # Also update remote
     github_token = os.environ.get("GITHUB_TOKEN")
     if not github_token:
         print("GITHUB_TOKEN not set, skipping remote push for todo.")
         return
     repo_dir = "/tmp/todo_repo"
     remote_url = f"https://{github_token}@github.com/{TODO_REPO_OWNER}/{TODO_REPO_NAME}.git"
-    # Clone if doesn't exist
     if not os.path.isdir(repo_dir):
         if os.path.exists(repo_dir):
             shutil.rmtree(repo_dir)
         Repo.clone_from(remote_url, repo_dir, branch=TODO_REPO_BRANCH)
     repo = Repo(repo_dir)
-    # Copy the file to the repo
+    # Always pull first to avoid non-fast-forward error
+    origin = repo.remote()
+    origin.pull(TODO_REPO_BRANCH)
     shutil.copyfile(TODO_FILE, os.path.join(repo_dir, TODO_REPO_FILE))
     repo.git.add(TODO_REPO_FILE)
     try:
@@ -547,7 +547,7 @@ def save_todo(todo_list):
             print("Git commit error:", e)
             return
     try:
-        repo.remote().push()
+        origin.push()
     except Exception as e:
         print("Git push error:", e)
 
@@ -607,6 +607,12 @@ def save_notes(notes_content):
             shutil.rmtree(repo_dir)
         Repo.clone_from(remote_url, repo_dir, branch=NOTES_REPO_BRANCH)
     repo = Repo(repo_dir)
+    origin = repo.remote()
+    # Always pull first to avoid non-fast-forward error
+    try:
+        origin.pull(NOTES_REPO_BRANCH)
+    except Exception as e:
+        print("Git pull error on notes:", e)
     shutil.copyfile(NOTES_FILE, os.path.join(repo_dir, NOTES_REPO_FILE))
     repo.git.add(NOTES_REPO_FILE)
     try:
@@ -616,9 +622,10 @@ def save_notes(notes_content):
             print("Git commit error:", e)
             return
     try:
-        repo.remote().push()
+        origin.push()
     except Exception as e:
         print("Git push error:", e)
+        
 
 @app.route("/notes", methods=["GET"])
 @login_required
