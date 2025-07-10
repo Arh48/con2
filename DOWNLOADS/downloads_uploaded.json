@@ -18,5 +18,10 @@
     "filename": "shine_v.0.1.5.gb",
     "display": "shine_v.0.1.5.gb",
     "description": "added camera offset. added 2 npcs in silent hill. added old (but there are no walls). testing walking out of doors automatically. password is 1411."
+  },
+  {
+    "filename": "shine_v0.1.6.gb",
+    "display": "shine_v0.1.6.gb",
+    "description": "Added gate between route 1 and old. colourised house. changed walk speed to match g/s and r/b"
   }
 ]
