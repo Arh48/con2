@@ -714,6 +714,9 @@ def upload_image(key):
 def serve_image(key, filename):
     return send_from_directory(os.path.join(UPLOAD_BASE, str(key)), filename)
 
+@app.route("/emulator")
+def emulator():
+    return render_template("index.html")
 
 if __name__ == "__main__":
     log("App starting up...")
