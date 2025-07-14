@@ -101,7 +101,10 @@
                 <div class="d-flex justify-content-center flex-grow-1">
                     {% if current_user.is_authenticated %}
                     <ul class="navbar-nav me-auto mt-2">
-                        <li class="nav-item"><a class="nav-link" href="/upload">Upload </a></li>
+                        {% if current_user.username == "h" or "olivia"%}
+                            <li class="nav-item"><a class="nav-link" href="/upload">Upload </a></li>
+                        {% endif %}
+                        
                         <li class="nav-item"><a class="nav-link" href="/emulator">Emulate </a></li>
                         {% if current_user.username == "h" %}
                             <li class="nav-item">

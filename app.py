@@ -14,6 +14,8 @@ from git import Repo, GitCommandError
 import shutil
 import requests
 import threading
+import uuid # For unique IDs for image submissions
+
 # --- LOGGING SETUP ---
 logging.basicConfig(
     level=logging.DEBUG,
@@ -33,8 +35,21 @@ db = SQL("sqlite:///logins.db")
 GLOBAL_CHAT_KEY = "1000"
 UPLOAD_BASE = os.path.join(os.getcwd(), "IMAGES")
 DOWNLOADS_FOLDER = os.path.join(os.getcwd(), "DOWNLOADS")
-ALLOWED_EXTENSIONS = {"gb", "gbc", "gba"}  # <-- UPDATED to allow .gb, .gbc, .gba
+IMAGES_SUBMISSION_FOLDER = os.path.join(os.getcwd(), "IMAGE_SUBMISSIONS") # New folder for image submissions
+IMAGE_SUBMISSIONS_META_FILE = os.path.join(os.getcwd(), "image_submissions.json") # New meta file
+
+ALLOWED_EXTENSIONS = {"gb", "gbc", "gba", "png", "jpg", "jpeg", "gif"} # Updated to allow image extensions
 HARDCODED_PASSWORD_HASH = generate_password_hash("PocketMonstersShine123!")  # Use a secure password!
+CASSIE = generate_password_hash("h")
+
+# Define the username for CASSIE's password at the module level
+USERNAME_FOR_CASSIE = "cassie_user" # Renamed to uppercase for consistency with constants
+
+# GitHub repo details for image submissions
+IMAGESUB_REPO_OWNER = "Arh48"
+IMAGESUB_REPO_NAME = "imagesub"
+IMAGESUB_REPO_FILE = "image_submissions.json" # The meta file within the repo
+IMAGESUB_REPO_BRANCH = "main" # Or 'master' depending on your repo
 
 # Downloadable files metadata
 DOWNLOADS_META = [
@@ -53,7 +68,7 @@ DOWNLOADS_META = [
 app = Flask(__name__)
 app.config["SESSION_PERMANENT"] = False
 app.config["SESSION_TYPE"] = "filesystem"
-app.config['UPLOADS_FOLDER'] = DOWNLOADS_FOLDER
+app.config['UPLOADS_FOLDER'] = DOWNLOADS_FOLDER # This is for game ROMs, not general images
 Session(app)
 
 # Login manager
@@ -85,15 +100,49 @@ def after_request(response):
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
+# --- COMBINED AND CORRECTED LOGIN ROUTE ---
 @app.route("/login", methods=["GET", "POST"])
 def login():
     if request.method == "POST":
         password = request.form.get("password")
-        if not password or not check_password_hash(HARDCODED_PASSWORD_HASH, password):
+        if not password:
             return render_template("login.html", error="Incorrect password.")
-        session["password_ok"] = True
-        return redirect(url_for("choose_username"))
+
+        # Check for HARDCODED_PASSWORD_HASH
+        if check_password_hash(HARDCODED_PASSWORD_HASH, password):
+            session["password_ok"] = True
+            return redirect(url_for("choose_username"))
+        # Check for CASSIE password
+        elif check_password_hash(CASSIE, password):
+            session["password_ok"] = True # This might be redundant if auto-login succeeds, but kept for consistency.
+
+            # Use the globally defined username for CASSIE's password
+            username_to_login = USERNAME_FOR_CASSIE
+
+            # Check if the user exists in the database
+            rows = db.execute("SELECT * FROM users WHERE username = ?", username_to_login)
+            if not rows:
+                # If the user does not exist, insert them into the database.
+                db.execute("INSERT INTO users (username, hash, emoji) VALUES (?, ?, ?)", username_to_login, generate_password_hash("placeholder"), "🙂")
+                # Re-query to get the newly inserted user's data
+                rows = db.execute("SELECT * FROM users WHERE username = ?", username_to_login)
+            
+            # Create a User object and log the user in using Flask-Login
+            user = User()
+            user.id = rows[0]["id"]
+            user.username = rows[0]["username"]
+            user.emoji = rows[0].get("emoji", "🙂") # Get emoji, default to 🙂 if not found
+            login_user(user) # Log the user in
+            
+            session.pop("password_ok", None) # Remove the session flag after successful login
+
+            # Redirect to /hello as per previous instruction for CASSIE's password
+            return redirect("/hello") # Or url_for("hello_route_name") if you have a named route
+        else:
+            # If neither password matches
+            return render_template("login.html", error="Incorrect password.")
     return render_template("login.html")
+# --- END OF COMBINED LOGIN ROUTE ---
 
 @app.route("/logout")
 def logout():
@@ -107,7 +156,7 @@ def choose_username():
         return redirect(url_for("login"))
     if request.method == "POST":
         username = request.form.get("username")
-        if username not in ["h", "olivia"]:
+        if username not in ["h", "olivia", USERNAME_FOR_CASSIE]: # Added USERNAME_FOR_CASSIE to valid usernames
             return render_template("choose_username.html", error="Please choose a valid username.")
         rows = db.execute("SELECT * FROM users WHERE username = ?", username)
         if not rows:
@@ -116,11 +165,12 @@ def choose_username():
         user = User()
         user.id = rows[0]["id"]
         user.username = rows[0]["username"]
-        user.emoji = rows[0].get("emoji", "🙂")
+        user.emoji = rows[0].get("emoji", "�")
         login_user(user)
         session.pop("password_ok", None)
         return redirect(url_for("index"))
     return render_template("choose_username.html")
+
 
 @app.route("/", methods=["GET"])
 @login_required
@@ -270,6 +320,341 @@ def git_push_downloads(commit_message="Update downloads"):
         log(f"Git error: {e}")
         return False, f"Git error: {e}"
     
+# --- New Git Push for Image Submissions (with pull before push) ---
+def git_push_image_submissions(commit_message="Update image submissions"):
+    repo_dir = os.getcwd() # Assuming the repo is the current working directory
+    log(f"git_push_image_submissions called from dir: {repo_dir}")
+    log(f"IMAGES_SUBMISSION_FOLDER exists? {os.path.isdir(IMAGES_SUBMISSION_FOLDER)}")
+    log(f"IMAGE_SUBMISSIONS_META_FILE exists? {os.path.exists(IMAGE_SUBMISSIONS_META_FILE)}")
+
+    github_token = os.environ.get("GITHUB_TOKEN")
+    if not github_token:
+        log("GITHUB_TOKEN environment variable not set. Skipping git push for image submissions.")
+        return False, "GITHUB_TOKEN not set"
+
+    remote_url = f"https://{github_token}@github.com/{IMAGESUB_REPO_OWNER}/{IMAGESUB_REPO_NAME}.git"
+    REMOTE_NAME = "imagesub_autopush" # Unique remote name for this repo
+
+    try:
+        repo = Repo(repo_dir)
+
+        # Checkout the correct branch
+        try:
+            repo.git.checkout(IMAGESUB_REPO_BRANCH)
+            log(f"Checked out '{IMAGESUB_REPO_BRANCH}' branch for image submissions")
+        except GitCommandError as e:
+            log(f"ERROR: Cannot checkout '{IMAGESUB_REPO_BRANCH}' branch for image submissions: {e}")
+            return False, f"Cannot checkout '{IMAGESUB_REPO_BRANCH}' branch!"
+
+        remotes = [remote.name for remote in repo.remotes]
+        if REMOTE_NAME in remotes:
+            repo.delete_remote(repo.remote(REMOTE_NAME))
+            log(f"Deleted existing remote: {REMOTE_NAME}")
+        repo.create_remote(REMOTE_NAME, remote_url)
+        log(f"Added remote: {REMOTE_NAME} -> {remote_url}")
+
+        # --- PULL BEFORE PUSH ---
+        try:
+            origin = repo.remote(REMOTE_NAME)
+            origin.pull(IMAGESUB_REPO_BRANCH)
+            log(f"Pulled latest changes from '{IMAGESUB_REPO_BRANCH}' for image submissions.")
+        except GitCommandError as e:
+            log(f"WARNING: Git pull failed for image submissions: {e}. Attempting to proceed with push.")
+        # --- END PULL BEFORE PUSH ---
+
+        # Add the image submissions folder and the meta file
+        if os.path.isdir(IMAGES_SUBMISSION_FOLDER):
+            repo.git.add(IMAGES_SUBMISSION_FOLDER)
+            log(f"Staged {IMAGES_SUBMISSION_FOLDER} for commit.")
+        if os.path.exists(IMAGE_SUBMISSIONS_META_FILE):
+            repo.git.add(IMAGE_SUBMISSIONS_META_FILE)
+            log(f"Staged {IMAGE_SUBMISSIONS_META_FILE} for commit.")
+        
+        log(f"Image submission git status:\n{repo.git.status()}")
+
+        try:
+            commit = repo.index.commit(commit_message)
+            log(f"Image submission commit made: {commit.hexsha} - {commit_message}")
+        except GitCommandError as e:
+            log(f"Image submission Git commit error: {e}")
+            if "nothing to commit" in str(e):
+                return True, "Nothing new to commit for image submissions."
+            return False, f"Image submission Git commit error: {e}"
+
+        repo.remote(REMOTE_NAME).push(IMAGESUB_REPO_BRANCH)
+        log(f"Pushed to remote '{IMAGESUB_REPO_BRANCH}' branch for image submissions")
+        return True, "Pushed image submissions to git successfully."
+
+    except Exception as e:
+        log(f"Image submission Git error: {e}")
+        return False, f"Image submission Git error: {e}"
+
+# --- New function to sync local image submissions from GitHub ---
+def sync_image_submissions_local_from_github():
+    log("Attempting to sync image submissions from GitHub...")
+    github_token = os.environ.get("GITHUB_TOKEN")
+    if not github_token:
+        log("GITHUB_TOKEN environment variable not set. Skipping sync for image submissions.")
+        return False, "GITHUB_TOKEN not set"
+
+    temp_repo_dir = "/tmp/image_submissions_repo" # Use a temporary directory for cloning
+    remote_url = f"https://{github_token}@github.com/{IMAGESUB_REPO_OWNER}/{IMAGESUB_REPO_NAME}.git"
+
+    try:
+        if os.path.isdir(temp_repo_dir):
+            # If repo already exists, pull latest changes
+            repo = Repo(temp_repo_dir)
+            origin = repo.remote()
+            origin.pull(IMAGESUB_REPO_BRANCH)
+            log(f"Pulled latest image submissions from {IMAGESUB_REPO_NAME}.")
+        else:
+            # Clone the repo if it doesn't exist
+            Repo.clone_from(remote_url, temp_repo_dir, branch=IMAGESUB_REPO_BRANCH)
+            log(f"Cloned {IMAGESUB_REPO_NAME} to {temp_repo_dir}.")
+
+        # Copy image_submissions.json
+        source_meta_file = os.path.join(temp_repo_dir, IMAGESUB_REPO_FILE)
+        if os.path.exists(source_meta_file):
+            shutil.copyfile(source_meta_file, IMAGE_SUBMISSIONS_META_FILE)
+            log(f"Copied {IMAGESUB_REPO_FILE} from temp repo to local.")
+        else:
+            log(f"WARNING: {IMAGESUB_REPO_FILE} not found in cloned repo.")
+
+        # Copy image files from the repo's IMAGES_SUBMISSIONS folder to local IMAGES_SUBMISSION_FOLDER
+        source_images_dir = os.path.join(temp_repo_dir, "IMAGE_SUBMISSIONS") # Assuming this structure in the git repo
+        if os.path.isdir(source_images_dir):
+            if os.path.exists(IMAGES_SUBMISSION_FOLDER):
+                # Remove existing local image submissions to ensure a clean sync
+                shutil.rmtree(IMAGES_SUBMISSION_FOLDER)
+                os.makedirs(IMAGES_SUBMISSION_FOLDER) # Recreate empty folder
+                log(f"Cleaned local {IMAGES_SUBMISSION_FOLDER}.")
+
+            # Copy all contents from source_images_dir to IMAGES_SUBMISSION_FOLDER
+            for item in os.listdir(source_images_dir):
+                s = os.path.join(source_images_dir, item)
+                d = os.path.join(IMAGES_SUBMISSION_FOLDER, item)
+                if os.path.isdir(s):
+                    shutil.copytree(s, d, dirs_exist_ok=True) # Use dirs_exist_ok for Python 3.8+
+                else:
+                    shutil.copy2(s, d)
+            log(f"Copied image files from {source_images_dir} to {IMAGES_SUBMISSION_FOLDER}.")
+        else:
+            log(f"WARNING: 'IMAGE_SUBMISSIONS' directory not found in cloned repo at {source_images_dir}.")
+
+        return True, "Image submissions synced successfully."
+
+    except Exception as e:
+        log(f"Error syncing image submissions from GitHub: {e}")
+        return False, f"Error syncing image submissions from GitHub: {e}"
+
+# --- Image Submission Metadata Management ---
+def load_image_submissions_meta():
+    # Ensure local data is up-to-date from GitHub before loading
+    # This call needs to be carefully managed to avoid infinite recursion if it's called too often.
+    # For now, it's placed here to ensure the latest data is always loaded.
+    # In a production environment, you might want a separate background sync process or a webhook.
+    sync_image_submissions_local_from_github() 
+
+    if not os.path.exists(IMAGE_SUBMISSIONS_META_FILE):
+        log("No image submissions meta file found locally after sync attempt.")
+        return []
+    try:
+        with open(IMAGE_SUBMISSIONS_META_FILE, "r") as f:
+            data = json.load(f)
+            log(f"Loaded image submissions meta: {data}")
+            return data
+    except Exception as e:
+        log(f"Error loading image submissions meta: {e}")
+        return []
+
+def save_image_submissions_meta(meta_list):
+    try:
+        with open(IMAGE_SUBMISSIONS_META_FILE, "w") as f:
+            json.dump(meta_list, f, indent=2)
+        log(f"Saved image submissions meta: {meta_list}")
+    except Exception as e:
+        log(f"Error saving image submissions meta: {e}")
+
+# --- New Routes for Image Submission and Feedback ---
+@app.route("/submit_image", methods=["POST"])
+@login_required
+def submit_image():
+    if current_user.username != USERNAME_FOR_CASSIE:
+        return jsonify({"error": "Unauthorized"}), 403
+
+    if 'image' not in request.files:
+        return jsonify({"error": "No image file part"}), 400
+    file = request.files['image']
+    description = request.form.get('description', '').strip()
+
+    if file.filename == '':
+        return jsonify({"error": "No selected image file"}), 400
+    if not description:
+        return jsonify({"error": "Description is required"}), 400
+    
+    # Check if allowed extension (already covered by ALLOWED_EXTENSIONS)
+    if not allowed_file(file.filename):
+        return jsonify({"error": "File type not allowed."}), 400
+
+    filename = secure_filename(file.filename)
+    # Generate a unique ID for the submission
+    submission_id = str(uuid.uuid4())
+    
+    # Create a subfolder for each submission to keep files organized
+    submission_folder = os.path.join(IMAGES_SUBMISSION_FOLDER, submission_id)
+    os.makedirs(submission_folder, exist_ok=True)
+    
+    save_path = os.path.join(submission_folder, filename)
+    file.save(save_path)
+    log(f"Saved image submission to: {save_path}")
+
+    # Store metadata
+    meta_list = load_image_submissions_meta() # Load current state (which now includes sync)
+    new_submission = {
+        "id": submission_id,
+        "filename": filename,
+        "description": description,
+        "uploader": current_user.username,
+        "timestamp": datetime.now().isoformat(),
+        "image_url": url_for('serve_image_submission', submission_id=submission_id, filename=filename),
+        "feedback": {
+            "h": "",
+            "olivia": ""
+        }
+    }
+    meta_list.append(new_submission)
+    save_image_submissions_meta(meta_list) # Save updated state
+
+    # Asynchronously push to GitHub
+    threading.Thread(target=git_push_image_submissions, args=(f"Cassie submitted new image: {filename}",)).start()
+
+    return jsonify({"success": True, "message": "Image submitted successfully."})
+
+@app.route("/get_image_submissions", methods=["GET"])
+@login_required
+def get_image_submissions():
+    submissions = load_image_submissions_meta()
+    # Sort by timestamp, newest first
+    submissions.sort(key=lambda x: x.get("timestamp", ""), reverse=True)
+    return jsonify({"submissions": submissions})
+
+@app.route("/submit_feedback/<submission_id>", methods=["POST"])
+@login_required
+def submit_feedback(submission_id):
+    if current_user.username not in ["h", "olivia"]:
+        return jsonify({"error": "Unauthorized"}), 403
+
+    feedback_text = request.json.get('feedback', '').strip()
+    
+    meta_list = load_image_submissions_meta() # Load current state (which now includes sync)
+    found = False
+    for submission in meta_list:
+        if submission.get("id") == submission_id:
+            submission["feedback"][current_user.username] = feedback_text
+            found = True
+            break
+    
+    if not found:
+        return jsonify({"error": "Submission not found"}), 404
+
+    save_image_submissions_meta(meta_list) # Save updated state
+    
+    # Asynchronously push to GitHub
+    threading.Thread(target=git_push_image_submissions, args=(f"Feedback from {current_user.username} for submission {submission_id}",)).start()
+
+    return jsonify({"success": True, "message": "Feedback submitted successfully."})
+
+@app.route("/IMAGE_SUBMISSIONS/<submission_id>/<filename>")
+def serve_image_submission(submission_id, filename):
+    return send_from_directory(os.path.join(IMAGES_SUBMISSION_FOLDER, submission_id), filename)
+
+# --- New routes for deleting image submissions ---
+@app.route("/delete_image_submission/<submission_id>", methods=["POST"])
+@login_required
+def delete_image_submission(submission_id):
+    if current_user.username != "h": # Only 'h' can delete submissions
+        return jsonify({"error": "Unauthorized"}), 403
+
+    meta_list = load_image_submissions_meta()
+    original_len = len(meta_list)
+    
+    # Find and remove the submission from the list
+    submission_to_delete = None
+    new_meta_list = []
+    for submission in meta_list:
+        if submission.get("id") == submission_id:
+            submission_to_delete = submission
+        else:
+            new_meta_list.append(submission)
+
+    if submission_to_delete is None:
+        return jsonify({"error": "Image submission not found"}), 404
+
+    # Delete the corresponding folder and its contents locally
+    submission_folder_path = os.path.join(IMAGES_SUBMISSION_FOLDER, submission_id)
+    if os.path.exists(submission_folder_path) and os.path.isdir(submission_folder_path):
+        try:
+            shutil.rmtree(submission_folder_path)
+            log(f"Deleted local image submission folder: {submission_folder_path}")
+        except Exception as e:
+            log(f"Error deleting local image submission folder {submission_folder_path}: {e}")
+            return jsonify({"error": f"Failed to delete local files: {e}"}), 500
+    else:
+        log(f"Local image submission folder not found: {submission_folder_path}")
+
+    # Save the updated metadata list
+    save_image_submissions_meta(new_meta_list)
+
+    # Asynchronously push changes to GitHub
+    threading.Thread(target=git_push_image_submissions, args=(f"Deleted image submission: {submission_id} by {current_user.username}",)).start()
+
+    return jsonify({"success": True, "message": "Image submission deleted successfully."})
+
+@app.route("/delete_image_submissions", methods=["POST"])
+@login_required
+def delete_image_submissions():
+    if current_user.username != "h": # Only 'h' can delete submissions
+        return jsonify({"error": "Unauthorized"}), 403
+
+    data = request.get_json()
+    submission_ids = data.get("submission_ids", [])
+    
+    meta_list = load_image_submissions_meta()
+    original_len = len(meta_list)
+    
+    deleted_count = 0
+    new_meta_list = []
+    deleted_ids = []
+
+    for submission in meta_list:
+        if submission.get("id") in submission_ids:
+            # Delete local files/folder for this submission
+            submission_folder_path = os.path.join(IMAGES_SUBMISSION_FOLDER, submission.get("id"))
+            if os.path.exists(submission_folder_path) and os.path.isdir(submission_folder_path):
+                try:
+                    shutil.rmtree(submission_folder_path)
+                    log(f"Deleted local image submission folder: {submission_folder_path}")
+                    deleted_count += 1
+                    deleted_ids.append(submission.get("id"))
+                except Exception as e:
+                    log(f"Error deleting local image submission folder {submission_folder_path}: {e}")
+                    # Don't fail the whole bulk operation for one file, just log
+            else:
+                log(f"Local image submission folder not found during bulk delete: {submission_folder_path}")
+        else:
+            new_meta_list.append(submission)
+    
+    if deleted_count > 0:
+        save_image_submissions_meta(new_meta_list)
+        # Asynchronously push changes to GitHub
+        threading.Thread(target=git_push_image_submissions, args=(f"Bulk deleted image submissions: {', '.join(deleted_ids)} by {current_user.username}",)).start()
+        return jsonify({"success": True, "message": f"Deleted {deleted_count} image submissions."})
+    else:
+        return jsonify({"success": False, "message": "No matching image submissions found for deletion."}), 404
+
+# --- End new routes for deleting image submissions ---
+
+
 @app.route("/admin")
 @login_required
 def admin():
@@ -286,12 +671,16 @@ def admin():
             folder_path = os.path.join(images_base, folder)
             if os.path.isdir(folder_path):
                 image_folders[folder] = [img for img in os.listdir(folder_path) if not img.startswith('.')]
+    
+    image_submissions = load_image_submissions_meta() # Load image submissions for admin page
+    
     return render_template(
         "admin.html",
         users=users,
         group_chats=group_chats,
         downloads=downloads,
-        image_folders=image_folders
+        image_folders=image_folders,
+        image_submissions=image_submissions # Pass to admin template
     )
 
 @app.route("/delete_user/<username>", methods=["POST"])
@@ -565,7 +954,6 @@ def update_todo():
     return jsonify({"success": True})
 
 
-
 NOTES_FILE = "notes.json"
 NOTES_REPO_OWNER = "Arh48"
 NOTES_REPO_NAME = "todo"
@@ -687,7 +1075,6 @@ def delete_file_later(path, seconds=300):
     timer.start()
 
 
-
 @app.route("/IMAGES/<key>/", methods=["POST"])
 @login_required
 def upload_image(key):
@@ -726,6 +1113,15 @@ if __name__ == "__main__":
     if not os.path.exists(DOWNLOADS_FOLDER):
         os.makedirs(DOWNLOADS_FOLDER)
         log(f"Created DOWNLOADS_FOLDER: {DOWNLOADS_FOLDER}")
+    if not os.path.exists(IMAGES_SUBMISSION_FOLDER): # Create new folder
+        os.makedirs(IMAGES_SUBMISSION_FOLDER)
+        log(f"Created IMAGES_SUBMISSION_FOLDER: {IMAGES_SUBMISSION_FOLDER}")
+
+    # --- Sync image submissions on startup ---
+    sync_success, sync_msg = sync_image_submissions_local_from_github()
+    log(f"Initial image submissions sync result: success={sync_success}, msg={sync_msg}")
+    # --- End sync image submissions on startup ---
+
     chat_group = db.execute("SELECT * FROM group_chats WHERE id = ?", GLOBAL_CHAT_KEY)
     if not chat_group:
         db.execute("INSERT INTO group_chats (id) VALUES (?)", GLOBAL_CHAT_KEY)

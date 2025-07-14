@@ -1,372 +1,365 @@
 {% extends "layout.html" %}
 
+{% block title %}
+    Admin Panel
+{% endblock %}
+
 {% block main %}
 <div class="container mt-4">
-    <h2 class="text-center fw-bold mt-3">Admin Control Panel</h2>
-    
-    <!-- Storage Progress Bar -->
-    <div class="my-4">
-        <div class="d-flex justify-content-between align-items-center mb-1">
-            <span class="fw-semibold">Storage Usage</span>
-            <span id="storage-text" class="fw-semibold" style="font-size: 1em;">...</span>
+    <h1 class="mb-4">Admin Panel</h1>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            {% for category, message in messages %}
+                <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+                    {{ message }}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                </div>
+            {% endfor %}
+        {% endif %}
+    {% endwith %}
+
+    <!-- Users Section -->
+    <div class="card shadow-sm mb-4">
+        <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
+            <h5 class="mb-0">Manage Users</h5>
+            <button class="btn btn-sm btn-outline-light" id="deleteSelectedUsersBtn">Delete Selected</button>
         </div>
-        <div class="progress" style="height: 28px;">
-            <div id="storage-bar" class="progress-bar bg-info" role="progressbar" style="width: 0%;" aria-valuemin="0" aria-valuemax="100">0%</div>
-        </div>
-    </div>
-    
-    <!-- Edit Mode Controls -->
-    <div class="d-flex justify-content-between align-items-center mb-3">
-        <button id="toggleEditMode" class="btn btn-warning">Edit</button>
-        <button id="deleteSelectedUsers" class="btn btn-danger d-none">Delete Selected Users</button>
-    </div>
-
-    <!-- User Management Table -->
-    <div class="card p-3 shadow-sm bg-light">
-        <h3 class="fw-semibold mb-3">User Management</h3>
-        <table class="table table-hover rounded">
-            <thead class="bg-primary text-white">
-                <tr>
-                    <th>Select</th>
-                    <th>Username</th>
-                    <th>Action</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for user in users %}
-                <tr>
-                    <td>
-                        <input type="checkbox" class="user-checkbox form-check-input" data-username="{{ user.username }}" style="display: none;">
-                    </td>
-                    <td>{{ user.username }}</td>
-                    <td>
-                        <form action="/delete_user/{{ user.username }}" method="POST">
-                            <button type="submit" class="btn btn-danger btn-sm">Delete</button>
-                        </form>
-                    </td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
-    </div>
-
-    <!-- Group Chats Table -->
-    <div class="card p-3 shadow-sm bg-light mt-4">
-        <h3 class="fw-semibold mb-3">Group Chats</h3>
-        <button id="deleteSelectedChats" class="btn btn-danger d-none">Delete Selected Chats</button>
-        <table class="table table-hover rounded">
-            <thead class="bg-success text-white">
-                <tr>
-                    <th>Select</th>
-                    <th>Chat ID</th>
-                    <th>Action</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for chat in group_chats %}
-                <tr>
-                    <td>
-                        <input type="checkbox" class="chat-checkbox form-check-input" data-chatid="{{ chat.id }}" style="display: none;">
-                    </td>
-                    <td>{{ chat.id }}</td>
-                    <td>
-                        <form action="/delete_chat/{{ chat.id }}" method="POST">
-                            <button type="submit" class="btn btn-danger btn-sm">Delete</button>
-                        </form>
-                    </td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
-    </div>
-
-    <!-- Reset Messages -->
-    <div class="card p-3 shadow-sm bg-light mt-4">
-        <h3 class="fw-semibold mb-3">Reset Messages</h3>
-        <form action="{{ url_for('reset_messages') }}" method="post" id="resetMessagesForm">
-            <button type="submit" class="btn btn-danger"
-                onclick="return confirm('Are you sure? This will delete all chat messages.')">
-                Reset All Messages
-            </button>
-        </form>
-    </div>
-
-    <!-- Downloadable Files Management Table -->
-    <div class="card p-3 shadow-sm bg-light mt-4">
-        <h3 class="fw-semibold mb-3">Downloadable Files <span class="text-muted" style="font-size:12px;">(from /DOWNLOADS)</span></h3>
-        <button id="deleteSelectedDownloads" class="btn btn-danger d-none mb-2">Delete Selected Downloads</button>
-        <div class="table-responsive" style="max-height:400px;overflow:auto;">
-            <table class="table table-hover rounded align-middle">
-                <thead class="bg-warning text-dark">
-                    <tr>
-                        <th>Select</th>
-                        <th>Filename</th>
-                        <th>Description</th>
-                        <th>Actions</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for file in downloads %}
-                    <tr>
-                        <td>
-                            <input type="checkbox" class="download-checkbox form-check-input" data-filename="{{ file.filename }}" style="display: none;">
-                        </td>
-                        <td>{{ file.filename }}</td>
-                        <td>{{ file.description }}</td>
-                        <td>
-                            <form action="/delete_download/{{ file.filename | urlencode }}" method="POST" style="display:inline;" onsubmit="return confirm('Delete file {{ file.filename }} from /DOWNLOADS?');">
-                                <button type="submit" class="btn btn-danger btn-sm">Delete</button>
-                            </form>
-                        </td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-        </div>
-    </div>
-
-    <!-- Image Management Table -->
-    <div class="card p-3 shadow-sm bg-light mt-4">
-        <h3 class="fw-semibold mb-3">Image Management <span class="text-muted" style="font-size:12px;">(from /IMAGES/&lt;key&gt;)</span></h3>
-        <button id="deleteSelectedImageFolders" class="btn btn-danger d-none mb-2">Delete Selected Image Folders</button>
-        <button id="deleteSelectedImages" class="btn btn-danger d-none mb-2 ms-2">Delete Selected Images</button>
-        <div class="table-responsive" style="max-height:400px;overflow:auto;">
-        <table class="table table-hover rounded align-middle">
-            <thead class="bg-info text-white">
-                <tr>
-                    <th>Select Folder</th>
-                    <th>Folder Key</th>
-                    <th>Select Image</th>
-                    <th>Images</th>
-                    <th>Actions</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for key, images in image_folders.items() %}
-                <tr>
-                    <td>
-                        <input type="checkbox" class="image-folder-checkbox form-check-input" data-key="{{ key }}" style="display: none;">
-                    </td>
-                    <td>{{ key }}</td>
-                    <td>
-                        {% for img in images %}
-                        <input type="checkbox" class="image-checkbox form-check-input" data-key="{{ key }}" data-image="{{ img }}" style="display: none;">
-                        <br>
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-striped table-hover">
+                    <thead>
+                        <tr>
+                            <th><input type="checkbox" id="selectAllUsers"></th>
+                            <th>ID</th>
+                            <th>Username</th>
+                            <th>Emoji</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="usersTableBody">
+                        {% for user in users %}
+                        <tr>
+                            <td><input type="checkbox" class="user-checkbox" data-username="{{ user.username }}"></td>
+                            <td>{{ user.id }}</td>
+                            <td>{{ user.username }}</td>
+                            <td>{{ user.emoji }}</td>
+                            <td>
+                                <form action="/delete_user/{{ user.username }}" method="post" class="d-inline-block">
+                                    <button type="submit" class="btn btn-danger btn-sm" onclick="return confirm('Are you sure you want to delete user {{ user.username }}?');">Delete</button>
+                                </form>
+                            </td>
+                        </tr>
                         {% endfor %}
-                    </td>
-                    <td>
-                        {% for img in images %}
-                        <span style="font-size:smaller;">{{ img }}</span><br>
-                        {% endfor %}
-                    </td>
-                    <td>
-                        <form action="/delete_images_folder/{{ key }}" method="POST" style="display:inline;" onsubmit="return confirm('Delete the folder /IMAGES/{{ key }} and all its images?');">
-                            <button type="submit" class="btn btn-danger btn-sm mb-1">Delete Folder</button>
-                        </form>
-                        {% if images|length > 0 %}
-                        <div class="dropdown d-inline-block position-relative">
-                            <button class="btn btn-outline-danger btn-sm dropdown-toggle mb-1" type="button" data-bs-toggle="dropdown" aria-expanded="false">
-                                Delete Image
-                            </button>
-                            <ul class="dropdown-menu">
-                                {% for img in images %}
-                                <li>
-                                    <form action="/delete_image/{{ key }}/{{ img|urlencode }}" method="POST"
-                                          onsubmit="return confirm('Delete image {{ img }} from folder {{ key }}?');"
-                                          style="margin-bottom: 0;">
-                                        <button type="submit" class="dropdown-item text-danger" style="font-size:smaller;">
-                                            {{ img }}
-                                        </button>
-                                    </form>
-                                </li>
-                                {% endfor %}
-                            </ul>
-                        </div>
-                        {% endif %}
-                    </td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
+                    </tbody>
+                </table>
+            </div>
         </div>
     </div>
+
+    <!-- Group Chats Section -->
+    <div class="card shadow-sm mb-4">
+        <div class="card-header bg-info text-white d-flex justify-content-between align-items-center">
+            <h5 class="mb-0">Manage Group Chats</h5>
+            <button class="btn btn-sm btn-outline-light" id="deleteSelectedChatsBtn">Delete Selected</button>
+        </div>
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-striped table-hover">
+                    <thead>
+                        <tr>
+                            <th><input type="checkbox" id="selectAllChats"></th>
+                            <th>Chat ID</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="chatsTableBody">
+                        {% for chat in group_chats %}
+                        <tr>
+                            <td><input type="checkbox" class="chat-checkbox" data-chatid="{{ chat.id }}"></td>
+                            <td>{{ chat.id }}</td>
+                            <td>
+                                <form action="/delete_chat/{{ chat.id }}" method="post" class="d-inline-block">
+                                    <button type="submit" class="btn btn-danger btn-sm" onclick="return confirm('Are you sure you want to delete chat {{ chat.id }}?');">Delete</button>
+                                </form>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            <button class="btn btn-warning mt-3" id="resetMessagesBtn">Reset All Messages</button>
+        </div>
+    </div>
+
+    <!-- Downloads Section -->
+    <div class="card shadow-sm mb-4">
+        <div class="card-header bg-success text-white d-flex justify-content-between align-items-center">
+            <h5 class="mb-0">Manage Downloads</h5>
+            <button class="btn btn-sm btn-outline-light" id="deleteSelectedDownloadsBtn">Delete Selected</button>
+        </div>
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-striped table-hover">
+                    <thead>
+                        <tr>
+                            <th><input type="checkbox" id="selectAllDownloads"></th>
+                            <th>Filename</th>
+                            <th>Display Name</th>
+                            <th>Description</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="downloadsTableBody">
+                        {% for download in downloads %}
+                        <tr>
+                            <td><input type="checkbox" class="download-checkbox" data-filename="{{ download.filename }}"></td>
+                            <td>{{ download.filename }}</td>
+                            <td>{{ download.display }}</td>
+                            <td>{{ download.description }}</td>
+                            <td>
+                                <form action="/delete_download/{{ download.filename }}" method="post" class="d-inline-block">
+                                    <button type="submit" class="btn btn-danger btn-sm" onclick="return confirm('Are you sure you want to delete {{ download.filename }}?');">Delete</button>
+                                </form>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Images Section (General Chat Images) -->
+    <div class="card shadow-sm mb-4">
+        <div class="card-header bg-warning text-dark d-flex justify-content-between align-items-center">
+            <h5 class="mb-0">Manage Chat Images (Temporary)</h5>
+            <button class="btn btn-sm btn-outline-dark" id="deleteSelectedImageFoldersBtn">Delete Selected Folders</button>
+        </div>
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-striped table-hover">
+                    <thead>
+                        <tr>
+                            <th><input type="checkbox" id="selectAllImageFolders"></th>
+                            <th>Folder Key</th>
+                            <th>Images</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="imageFoldersTableBody">
+                        {% for key, files in image_folders.items() %}
+                        <tr>
+                            <td><input type="checkbox" class="image-folder-checkbox" data-key="{{ key }}"></td>
+                            <td>{{ key }}</td>
+                            <td>
+                                {% if files %}
+                                    <ul>
+                                        {% for file in files %}
+                                            <li>{{ file }}
+                                                <form action="/delete_image/{{ key }}/{{ file }}" method="post" class="d-inline-block ms-2">
+                                                    <button type="submit" class="btn btn-danger btn-sm" onclick="return confirm('Are you sure you want to delete image {{ file }} from folder {{ key }}?');">Delete</button>
+                                                </form>
+                                            </li>
+                                        {% endfor %}
+                                    </ul>
+                                {% else %}
+                                    No images
+                                {% endif %}
+                            </td>
+                            <td>
+                                <form action="/delete_images_folder/{{ key }}" method="post" class="d-inline-block">
+                                    <button type="submit" class="btn btn-danger btn-sm" onclick="return confirm('Are you sure you want to delete folder {{ key }} and all its images?');">Delete Folder</button>
+                                </form>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Image Submissions Section (New) -->
+    <div class="card shadow-sm mb-4">
+        <div class="card-header bg-danger text-white d-flex justify-content-between align-items-center">
+            <h5 class="mb-0">Manage Image Submissions</h5>
+            <button class="btn btn-sm btn-outline-light" id="deleteSelectedImageSubmissionsBtn">Delete Selected</button>
+        </div>
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-striped table-hover">
+                    <thead>
+                        <tr>
+                            <th><input type="checkbox" id="selectAllImageSubmissions"></th>
+                            <th>ID</th>
+                            <th>Uploader</th>
+                            <th>Description</th>
+                            <th>Image</th>
+                            <th>Feedback (H)</th>
+                            <th>Feedback (Olivia)</th>
+                            <th>Timestamp</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="imageSubmissionsTableBody">
+                        {% for submission in image_submissions %}
+                        <tr>
+                            <td><input type="checkbox" class="image-submission-checkbox" data-submission-id="{{ submission.id }}"></td>
+                            <td>{{ submission.id[:8] }}...</td> {# Show a truncated ID #}
+                            <td>{{ submission.uploader }}</td>
+                            <td>{{ submission.description }}</td>
+                            <td>
+                                {% if submission.image_url %}
+                                    <img src="{{ submission.image_url }}" alt="Submission Image" style="max-width: 100px; max-height: 100px; border-radius: 4px; cursor: pointer;" onclick="showFullscreenImage('{{ submission.image_url }}')">
+                                {% else %}
+                                    N/A
+                                {% endif %}
+                            </td>
+                            <td>{{ submission.feedback.h | default('No feedback') }}</td>
+                            <td>{{ submission.feedback.olivia | default('No feedback') }}</td>
+                            <td>{{ submission.timestamp }}</td>
+                            <td>
+                                <form action="/delete_image_submission/{{ submission.id }}" method="post" class="d-inline-block">
+                                    <button type="submit" class="btn btn-danger btn-sm" onclick="return confirm('Are you sure you want to delete this image submission ({{ submission.id[:8] }}...)? This will delete it locally and from GitHub.');">Delete</button>
+                                </form>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
 </div>
 
-<!-- Bootstrap JS for dropdowns (in case not already included in your layout.html) -->
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<!-- Fullscreen Image Modal (re-used from chat_room.html for consistency) -->
+<div id="fullscreenImageModal" style="display:none; position:fixed; z-index:20000; top:0; left:0; width:100vw; height:100vh; background:rgba(0,0,0,0.85); align-items:center; justify-content:center;">
+    <img id="fullscreenImage" src="" alt="Full size" style="max-width:90vw; max-height:90vh; border-radius:16px; box-shadow:0 2px 32px #222;" />
+    <button onclick="closeFullscreenImage()" style="position:absolute; top:32px; right:40px; font-size:2rem; background:transparent; border:none; color:white; z-index:20001;">&times;</button>
+</div>
 
 <script>
-    // Storage Progress Bar Logic
-    function formatBytes(bytes) {
-        if (bytes === 0) return '0 Bytes';
-        const k = 1024, dm = 2;
-        const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
-        const i = Math.floor(Math.log(bytes) / Math.log(k));
-        return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
+    // Re-use fullscreen image functions from chat_room.html
+    function showFullscreenImage(src) {
+        const modal = document.getElementById('fullscreenImageModal');
+        const img = document.getElementById('fullscreenImage');
+        img.src = src;
+        modal.style.display = 'flex';
+        document.body.style.overflow = 'hidden';
     }
-    function fetchStorageUsage() {
-        fetch("/storage_usage")
-            .then(response => response.json())
-            .then(data => {
-                // data: { used_bytes: ..., total_bytes: ... }
-                const used = data.used_bytes || 0;
-                const total = data.total_bytes || 1073741824; // 1GB fallback
-                const percent = Math.min(100, (used / total * 100).toFixed(1));
-                document.getElementById("storage-bar").style.width = percent + "%";
-                document.getElementById("storage-bar").textContent = percent + "%";
-                document.getElementById("storage-bar").setAttribute("aria-valuenow", percent);
-                document.getElementById("storage-text").textContent =
-                    formatBytes(used) + " / " + formatBytes(total);
-                // Color based on usage
-                if (percent < 70) {
-                    document.getElementById("storage-bar").className = "progress-bar bg-info";
-                } else if (percent < 90) {
-                    document.getElementById("storage-bar").className = "progress-bar bg-warning";
-                } else {
-                    document.getElementById("storage-bar").className = "progress-bar bg-danger";
-                }
-            });
+    function closeFullscreenImage() {
+        document.getElementById('fullscreenImageModal').style.display = 'none';
+        document.body.style.overflow = '';
     }
-    document.addEventListener("DOMContentLoaded", function () {
-        fetchStorageUsage();
-        setInterval(fetchStorageUsage, 20000); // auto-update every 20s
+    document.getElementById('fullscreenImageModal').addEventListener('click', function(e) {
+        if (e.target === this) closeFullscreenImage();
+    });
 
-        const editButton = document.getElementById("toggleEditMode");
-        const deleteUserButton = document.getElementById("deleteSelectedUsers");
-        const deleteChatButton = document.getElementById("deleteSelectedChats");
-        const deleteImagesFoldersButton = document.getElementById("deleteSelectedImageFolders");
-        const deleteImagesButton = document.getElementById("deleteSelectedImages");
-        const deleteDownloadsButton = document.getElementById("deleteSelectedDownloads");
-        let editMode = false;
+    document.addEventListener('DOMContentLoaded', function() {
+        // --- General Checkbox Logic ---
+        function setupSelectAll(checkboxId, itemClass, deleteBtnId, deleteUrl, confirmMessage) {
+            const selectAllCheckbox = document.getElementById(checkboxId);
+            const itemCheckboxes = document.querySelectorAll(`.${itemClass}`);
+            const deleteSelectedBtn = document.getElementById(deleteBtnId);
 
-        editButton.addEventListener("click", function () {
-            editMode = !editMode;
-            document.querySelectorAll("input[type='checkbox']").forEach(checkbox => {
-                checkbox.style.display = editMode ? "inline-block" : "none";
+            if (!selectAllCheckbox || !itemCheckboxes.length || !deleteSelectedBtn) {
+                return; // Exit if elements not found
+            }
+
+            selectAllCheckbox.addEventListener('change', function() {
+                itemCheckboxes.forEach(cb => cb.checked = this.checked);
             });
-            if(deleteUserButton) deleteUserButton.classList.toggle("d-none", !editMode);
-            if(deleteChatButton) deleteChatButton.classList.toggle("d-none", !editMode);
-            if(deleteImagesFoldersButton) deleteImagesFoldersButton.classList.toggle("d-none", !editMode);
-            if(deleteImagesButton) deleteImagesButton.classList.toggle("d-none", !editMode);
-            if(deleteDownloadsButton) deleteDownloadsButton.classList.toggle("d-none", !editMode);
-        });
 
-        if(deleteUserButton){
-            deleteUserButton.addEventListener("click", function () {
-                const selectedUsers = [...document.querySelectorAll(".user-checkbox:checked")].map(cb => cb.dataset.username);
-                if (selectedUsers.length > 0 && confirm("Are you sure you want to delete selected users?")) {
-                    fetch("/delete_users", {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ users: selectedUsers })
-                    }).then(() => location.reload());
+            itemCheckboxes.forEach(cb => {
+                cb.addEventListener('change', function() {
+                    if (!this.checked) {
+                        selectAllCheckbox.checked = false;
+                    } else if (Array.from(itemCheckboxes).every(c => c.checked)) {
+                        selectAllCheckbox.checked = true;
+                    }
+                });
+            });
+
+            deleteSelectedBtn.addEventListener('click', async function() {
+                const selectedItems = Array.from(itemCheckboxes)
+                    .filter(cb => cb.checked)
+                    .map(cb => {
+                        if (itemClass === 'user-checkbox') return cb.dataset.username;
+                        if (itemClass === 'chat-checkbox') return cb.dataset.chatid;
+                        if (itemClass === 'download-checkbox') return cb.dataset.filename;
+                        if (itemClass === 'image-folder-checkbox') return cb.dataset.key;
+                        if (itemClass === 'image-submission-checkbox') return cb.dataset.submissionId;
+                        return null;
+                    })
+                    .filter(item => item !== null);
+
+                if (selectedItems.length === 0) {
+                    alert("No items selected for deletion.");
+                    return;
+                }
+
+                if (confirm(confirmMessage)) {
+                    try {
+                        const response = await fetch(deleteUrl, {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json'
+                            },
+                            body: JSON.stringify({
+                                users: selectedItems, // For users
+                                chats: selectedItems, // For chats
+                                filenames: selectedItems, // For downloads
+                                keys: selectedItems, // For image folders
+                                submission_ids: selectedItems // For image submissions
+                            })
+                        });
+                        const data = await response.json();
+                        if (data.success) {
+                            alert(data.message || "Selected items deleted successfully.");
+                            location.reload(); // Reload page to reflect changes
+                        } else {
+                            alert("Error deleting selected items: " + (data.message || "Unknown error."));
+                        }
+                    } catch (error) {
+                        console.error("Error during bulk delete:", error);
+                        alert("Network error or server issue during deletion.");
+                    }
                 }
             });
         }
 
-        if(deleteChatButton){
-            deleteChatButton.addEventListener("click", function () {
-                const selectedChats = [...document.querySelectorAll(".chat-checkbox:checked")].map(cb => cb.dataset.chatid);
-                if (selectedChats.length > 0 && confirm("Are you sure you want to delete selected chats?")) {
-                    fetch("/delete_chats", {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ chats: selectedChats })
-                    }).then(() => location.reload());
-                }
-            });
-        }
+        // Setup for existing sections
+        setupSelectAll('selectAllUsers', 'user-checkbox', 'deleteSelectedUsersBtn', '/delete_users', 'Are you sure you want to delete selected users?');
+        setupSelectAll('selectAllChats', 'chat-checkbox', 'deleteSelectedChatsBtn', '/delete_chats', 'Are you sure you want to delete selected chats?');
+        setupSelectAll('selectAllDownloads', 'download-checkbox', 'deleteSelectedDownloadsBtn', '/delete_downloads', 'Are you sure you want to delete selected downloads?');
+        setupSelectAll('selectAllImageFolders', 'image-folder-checkbox', 'deleteSelectedImageFoldersBtn', '/delete_images_folders', 'Are you sure you want to delete selected image folders?');
 
-        if(deleteImagesFoldersButton){
-            deleteImagesFoldersButton.addEventListener("click", function () {
-                const selectedKeys = [...document.querySelectorAll(".image-folder-checkbox:checked")].map(cb => cb.dataset.key);
-                if (selectedKeys.length > 0 && confirm("Are you sure you want to delete these /IMAGES folders? This will delete all images in those folders.")) {
-                    fetch("/delete_images_folders", {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ keys: selectedKeys })
-                    }).then(() => location.reload());
-                }
-            });
-        }
+        // Setup for NEW Image Submissions section
+        setupSelectAll('selectAllImageSubmissions', 'image-submission-checkbox', 'deleteSelectedImageSubmissionsBtn', '/delete_image_submissions', 'Are you sure you want to delete selected image submissions? This will delete them locally and from GitHub.');
 
-        if(deleteImagesButton){
-            deleteImagesButton.addEventListener("click", function () {
-                const selectedImages = [...document.querySelectorAll(".image-checkbox:checked")]
-                    .map(cb => ({ key: cb.dataset.key, image: cb.dataset.image }));
-                if (selectedImages.length > 0 && confirm("Are you sure you want to delete the selected images?")) {
-                    fetch("/delete_images", {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ images: selectedImages })
-                    }).then(() => location.reload());
-                }
-            });
-        }
-
-        if(deleteDownloadsButton){
-            deleteDownloadsButton.addEventListener("click", function () {
-                const selectedDownloads = [...document.querySelectorAll(".download-checkbox:checked")].map(cb => cb.dataset.filename);
-                if (selectedDownloads.length > 0 && confirm("Are you sure you want to delete these files from /DOWNLOADS?")) {
-                    fetch("/delete_downloads", {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ filenames: selectedDownloads })
-                    }).then(() => location.reload());
-                }
-            });
-        }
-
-        document.getElementById("resetMessagesForm").addEventListener("submit", function (event) {
-            event.preventDefault();
-            if (confirm("Are you sure? This will delete all chat messages.")) {
-                fetch("{{ url_for('reset_messages') }}", { method: "POST" })
-                    .then(response => {
-                        if (response.ok) {
-                            alert("Messages reset successfully!");
+        // Reset Messages Button
+        const resetMessagesBtn = document.getElementById('resetMessagesBtn');
+        if (resetMessagesBtn) {
+            resetMessagesBtn.addEventListener('click', async function() {
+                if (confirm('Are you sure you want to reset ALL chat messages? This action cannot be undone.')) {
+                    try {
+                        const response = await fetch('/reset_messages', { method: 'POST' });
+                        const data = await response.json();
+                        if (data.success) {
+                            alert(data.message);
                             location.reload();
                         } else {
-                            alert("Failed to reset messages.");
+                            alert("Error resetting messages: " + (data.error || "Unknown error."));
                         }
-                    });
-            }
-        });
+                    } catch (error) {
+                        console.error("Error resetting messages:", error);
+                        alert("Network error or server issue during message reset.");
+                    }
+                }
+            });
+        }
     });
 </script>
-
-<style>
-    body {
-        background-color: #f8f9fa;
-        color: #343a40;
-    }
-    .table {
-        background-color: white;
-    }
-    .table-hover tbody tr:hover {
-        background-color: rgba(0, 123, 255, 0.1);
-        transition: 0.3s;
-    }
-    .btn-danger:hover, .btn-warning:hover {
-        transform: scale(1.05);
-        transition: 0.3s ease-in-out;
-    }
-    .card {
-        background-color: #ffffff;
-        border-radius: 10px;
-    }
-    h2, h3 {
-        text-transform: uppercase;
-        letter-spacing: 1px;
-    }
-    .progress {
-        background: #e9ecef;
-        border-radius: 8px;
-        box-shadow: 0 2px 6px #0001;
-    }
-    .progress-bar {
-        font-weight: 600;
-        font-size: 1.1em;
-        line-height: 28px;
-    }
-</style>
 {% endblock %}

@@ -7,7 +7,59 @@
 {% block main %}
 <div class="container mt-4">
   <div class="row">
-    <!-- Left column: Downloads, To-Do, Notes -->
+    <!-- Left column: Conditional content based on username -->
+    {% if current_user.username == 'cassie' %}
+    <div class="col-lg-6 col-md-5">
+        <!-- Cassie's Image Submission Form -->
+        <div class="card mt-4 p-3 shadow-sm bg-light">
+            <h5 class="mb-3">📸 Submit Image for Review</h5>
+            <form id="imageSubmissionForm">
+                <div class="mb-3">
+                    <label for="imageUpload" class="form-label">Select Image</label>
+                    <input class="form-control" type="file" id="imageUpload" accept="image/*" required>
+                </div>
+                <div class="mb-3">
+                    <label for="imageDescription" class="form-label">Description</label>
+                    <textarea class="form-control" id="imageDescription" rows="3" placeholder="Enter a brief description for the image..." required></textarea>
+                </div>
+                <button type="submit" class="btn btn-primary w-100">Submit Image</button>
+                <div id="imageSubmitStatus" class="mt-2 text-center" style="display:none;"></div>
+            </form>
+        </div>
+        <!-- Display previous submissions for Cassie -->
+        <div class="card mt-4 p-3 shadow-sm bg-light">
+            <h5 class="mb-3">Previous Submissions</h5>
+            <div id="cassiePreviousSubmissions" class="list-group">
+                <!-- Previous submissions will be loaded here by JS -->
+                <p class="text-muted">Loading submissions...</p>
+            </div>
+        </div>
+    </div>
+    {% elif current_user.username in ['h', 'olivia'] %}
+    <div class="col-lg-6 col-md-5">
+        <!-- Image Feedback Section -->
+        <div class="card mt-4 p-3 shadow-sm bg-light">
+            <h5 class="mb-3">🖼️ Image Submissions & Feedback</h5>
+            <div id="currentImageSubmission" class="mb-4">
+                <h6>Current Submission:</h6>
+                <div id="currentImageDetails" class="text-muted">No current submission.</div>
+                <div class="mt-3">
+                    <h6>Your Feedback:</h6>
+                    <textarea class="form-control mb-2" id="feedbackArea" rows="3" placeholder="Enter your feedback here..."></textarea>
+                    <button class="btn btn-success btn-sm" id="submitFeedbackBtn">Submit Feedback</button>
+                    <span id="feedbackStatus" class="ms-2" style="font-size:0.9em;color:gray;"></span>
+                </div>
+            </div>
+            <hr>
+            <h6>Previous Submissions:</h6>
+            <div id="previousImageSubmissions" class="list-group">
+                <!-- Previous submissions will be loaded here by JS -->
+                <p class="text-muted">Loading submissions...</p>
+            </div>
+        </div>
+    </div>
+    {% else %}
+    <!-- Original left column content for other users -->
     <div class="col-lg-6 col-md-5">
         <div class="mb-3">
             <a href="https://drive.google.com/drive/folders/1ASJykXi4KothiRkZMkX3_t-uLIjaKAVA?usp=sharing" target="_blank" class="btn btn-info w-100 d-flex align-items-center justify-content-center">
@@ -53,8 +105,10 @@
         <span id="notes-status" style="font-size:0.9em;color:gray;"></span>
       </div>
     </div>
+    {% endif %}
+
     <!-- Main chat column -->
-    <div class="col-lg-6 col-md-7 col-12">
+    <div class="{% if current_user.username == 'cassie' or current_user.username in ['h', 'olivia'] %}col-lg-6 col-md-7{% else %}col-lg-6 col-md-7{% endif %} col-12">
       <div class="d-flex justify-content-between align-items-center">
         <h3 class="mb-0">Group Chat</h3>
       </div>
@@ -87,13 +141,15 @@
         <button onclick="closeFullscreenImage()" style="position:absolute; top:32px; right:40px; font-size:2rem; background:transparent; border:none; color:white; z-index:20001;">&times;</button>
       </div>
     </div>
-    <!-- Below chat: Info/game for mobile -->
+    <!-- Below chat: Info/game for mobile - Conditional visibility -->
+    {% if current_user.username not in ['cassie', 'h', 'olivia'] %}
     <div class="col-12 d-md-none mt-4">
       <div class="p-4 h-100 d-flex flex-column justify-content-center align-items-center" style="background: rgba(240,240,240,0.7); border-radius: 16px;">
         <h2>Welcome to the Game Project!</h2>
         <p style="font-size: 1.1rem;">Here goes your game, project info, leaderboard, or any homepage content.</p>
       </div>
     </div>
+    {% endif %}
   </div>
 </div>
 
@@ -194,6 +250,27 @@
         font-family: monospace;
         font-size: 1em;
     }
+    /* Image Submission/Feedback Specific Styles */
+    .submission-item {
+        border: 1px solid #ddd;
+        border-radius: 8px;
+        padding: 10px;
+        margin-bottom: 10px;
+        background-color: #f9f9f9;
+    }
+    .submission-item img {
+        max-width: 100%;
+        height: auto;
+        border-radius: 4px;
+        margin-bottom: 8px;
+    }
+    .submission-feedback {
+        font-size: 0.9em;
+        color: #666;
+        margin-top: 5px;
+        padding-left: 10px;
+        border-left: 3px solid #eee;
+    }
 </style>
 
 <script>
@@ -233,7 +310,7 @@
 
     function formatDate(timestamp) {
         const utcDate = new Date(timestamp);
-        const melbourneOffset = (utcDate.getMonth() >= 9 || utcDate.getMonth() <= 2) ? 11 : 10;
+        const melbourneOffset = (utcDate.getMonth() >= 9 || utcDate.getMonth() <= 2) ? 11 : 10; // DST for Melbourne
         const melbourneTime = new Date(utcDate.getTime() + melbourneOffset * 60 * 60 * 1000);
 
         const dayOfWeek = melbourneTime.toLocaleString('en-US', { weekday: 'long' });
@@ -396,35 +473,8 @@
 
 
     // --- To-Do List logic ---
-    function renderTodoList(list) {
-        const container = document.getElementById('todo-list');
-        container.innerHTML = '';
-        list.forEach((item, idx) => {
-            const div = document.createElement('div');
-            div.className = "d-flex align-items-center mb-1";
-            div.innerHTML = `
-              <input type="checkbox" ${item.done ? "checked" : ""} style="margin-right:8px;" data-idx="${idx}">
-              <span style="flex:1;${item.done?"text-decoration:line-through; color:#888;":""}">${item.text}</span>
-              <button class="btn btn-danger btn-sm ms-2" data-remove-idx="${idx}" title="Delete">🗑️</button>
-            `;
-            container.appendChild(div);
-        });
-    }
-
-    async function loadTodoList() {
-        const res = await fetch('/todo');
-        const list = await res.json();
-        renderTodoList(list);
-    }
-    async function saveTodoList(list) {
-        await fetch('/todo', {
-            method: "POST",
-            headers: {"Content-Type": "application/json"},
-            body: JSON.stringify({todo: list})
-        });
-    }
-
-    document.addEventListener("DOMContentLoaded", () => {
+    // Only initialize and run if not 'cassie', 'h', or 'olivia'
+    if (currentUser !== 'cassie' && currentUser !== 'h' && currentUser !== 'olivia') {
         let todoList = [];
         const newTodo = document.getElementById('new-todo');
         const addBtn = document.getElementById('add-todo-btn');
@@ -433,53 +483,87 @@
         const editArea = document.getElementById('edit-todo-area');
         const todoDiv = document.getElementById('todo-list');
 
-        function refresh() {
-            loadTodoList().then(() => {
-                fetch('/todo').then(r=>r.json()).then(list => todoList = list);
+        function renderTodoList(list) {
+            const container = document.getElementById('todo-list');
+            container.innerHTML = '';
+            list.forEach((item, idx) => {
+                const div = document.createElement('div');
+                div.className = "d-flex align-items-center mb-1";
+                div.innerHTML = `
+                    <input type="checkbox" ${item.done ? "checked" : ""} style="margin-right:8px;" data-idx="${idx}">
+                    <span style="flex:1;${item.done?"text-decoration:line-through; color:#888;":""}">${item.text}</span>
+                    <button class="btn btn-danger btn-sm ms-2" data-remove-idx="${idx}" title="Delete">🗑️</button>
+                `;
+                container.appendChild(div);
             });
         }
-        refresh();
 
-        addBtn.onclick = async () => {
-            if(newTodo.value.trim()) {
-                todoList.push({text: newTodo.value.trim(), done: false});
-                await saveTodoList(todoList);
-                newTodo.value = "";
-                refresh();
-            }
-        };
-        todoDiv.onclick = async (e) => {
-            if(e.target.matches('input[type=checkbox]')) {
-                const idx = +e.target.dataset.idx;
-                todoList[idx].done = e.target.checked;
-                await saveTodoList(todoList);
-                refresh();
-            } else if(e.target.dataset.removeIdx !== undefined) {
-                const idx = +e.target.dataset.removeIdx;
-                todoList.splice(idx,1);
-                await saveTodoList(todoList);
-                refresh();
-            }
-        };
-        editBtn.onclick = () => {
-            editArea.value = todoList.map(t => (t.done?"[x] ":"[ ] ") + t.text).join("\n");
-            editArea.style.display = saveBtn.style.display = "block";
-            editBtn.style.display = "none";
-        };
-        saveBtn.onclick = async () => {
-            // Parse lines: [x] or [ ] at start
-            todoList = editArea.value.split(/\n/).filter(Boolean).map(line => {
-                let done = /^\s*\[x\]/i.test(line);
-                let text = line.replace(/^\s*\[[x ]\]\s*/i,"");
-                return {text, done};
+        async function loadTodoList() {
+            const res = await fetch('/todo');
+            const list = await res.json();
+            renderTodoList(list);
+        }
+        async function saveTodoList(list) {
+            await fetch('/todo', {
+                method: "POST",
+                headers: {"Content-Type": "application/json"},
+                body: JSON.stringify({todo: list})
             });
-            await saveTodoList(todoList);
-            editArea.style.display = saveBtn.style.display = "none";
-            editBtn.style.display = "inline-block";
-            refresh();
-        };
+        }
 
-        // --- Notes logic ---
+        document.addEventListener("DOMContentLoaded", () => {
+            function refresh() {
+                loadTodoList().then(() => {
+                    fetch('/todo').then(r=>r.json()).then(list => todoList = list);
+                });
+            }
+            refresh();
+
+            addBtn.onclick = async () => {
+                if(newTodo.value.trim()) {
+                    todoList.push({text: newTodo.value.trim(), done: false});
+                    await saveTodoList(todoList);
+                    newTodo.value = "";
+                    refresh();
+                }
+            };
+            todoDiv.onclick = async (e) => {
+                if(e.target.matches('input[type=checkbox]')) {
+                    const idx = +e.target.dataset.idx;
+                    todoList[idx].done = e.target.checked;
+                    await saveTodoList(todoList);
+                    refresh();
+                } else if(e.target.dataset.removeIdx !== undefined) {
+                    const idx = +e.target.dataset.removeIdx;
+                    todoList.splice(idx,1);
+                    await saveTodoList(todoList);
+                    refresh();
+                }
+            };
+            editBtn.onclick = () => {
+                editArea.value = todoList.map(t => (t.done?"[x] ":"[ ] ") + t.text).join("\n");
+                editArea.style.display = saveBtn.style.display = "block";
+                editBtn.style.display = "none";
+            };
+            saveBtn.onclick = async () => {
+                // Parse lines: [x] or [ ] at start
+                todoList = editArea.value.split(/\n/).filter(Boolean).map(line => {
+                    let done = /^\s*\[x\]/i.test(line);
+                    let text = line.replace(/^\s*\[[x ]\]\s*/i,"");
+                    return {text, done};
+                });
+                await saveTodoList(todoList);
+                editArea.style.display = saveBtn.style.display = "none";
+                editBtn.style.display = "inline-block";
+                refresh();
+            };
+        });
+    }
+
+
+    // --- Notes logic ---
+    // Only initialize and run if not 'cassie', 'h', or 'olivia'
+    if (currentUser !== 'cassie' && currentUser !== 'h' && currentUser !== 'olivia') {
         const notesArea = document.getElementById('notes-area');
         const saveNotesBtn = document.getElementById('save-notes-btn');
         const notesStatus = document.getElementById('notes-status');
@@ -502,6 +586,226 @@
             notesStatus.textContent = "Saved!";
             setTimeout(() => notesStatus.textContent = "", 1500);
         };
-    });
+    }
+
+    // --- Image Submission/Feedback Logic ---
+    if (currentUser === 'cassie') {
+        const imageSubmissionForm = document.getElementById('imageSubmissionForm');
+        const imageUploadInput = document.getElementById('imageUpload');
+        const imageDescriptionInput = document.getElementById('imageDescription');
+        const imageSubmitStatus = document.getElementById('imageSubmitStatus');
+        const cassiePreviousSubmissionsDiv = document.getElementById('cassiePreviousSubmissions');
+
+        imageSubmissionForm.addEventListener('submit', async (event) => {
+            event.preventDefault();
+            
+            const file = imageUploadInput.files[0];
+            const description = imageDescriptionInput.value.trim();
+
+            if (!file || !description) {
+                imageSubmitStatus.textContent = "Please select an image and provide a description.";
+                imageSubmitStatus.style.color = "red";
+                return;
+            }
+
+            imageSubmitStatus.textContent = "Uploading and submitting...";
+            imageSubmitStatus.style.color = "blue";
+
+            const formData = new FormData();
+            formData.append('image', file);
+            formData.append('description', description);
+
+            try {
+                const response = await fetch('/submit_image', {
+                    method: 'POST',
+                    body: formData
+                });
+                const data = await response.json();
+
+                if (response.ok) {
+                    imageSubmitStatus.textContent = data.message;
+                    imageSubmitStatus.style.color = "green";
+                    imageUploadInput.value = ''; // Clear file input
+                    imageDescriptionInput.value = ''; // Clear description
+                    fetchImageSubmissionsForCassie(); // Refresh list
+                } else {
+                    imageSubmitStatus.textContent = `Error: ${data.error || 'Unknown error'}`;
+                    imageSubmitStatus.style.color = "red";
+                }
+            } catch (error) {
+                imageSubmitStatus.textContent = `Network error: ${error.message}`;
+                imageSubmitStatus.style.color = "red";
+                console.error("Image submission fetch error:", error);
+            }
+            setTimeout(() => imageSubmitStatus.style.display = 'none', 5000); // Hide status after a delay
+            imageSubmitStatus.style.display = 'block';
+        });
+
+        async function fetchImageSubmissionsForCassie() {
+            try {
+                const response = await fetch('/get_image_submissions');
+                const data = await response.json();
+                if (response.ok && data.submissions) {
+                    renderCassieSubmissions(data.submissions);
+                } else {
+                    console.error("Error fetching Cassie's submissions:", data.error || response.status);
+                    cassiePreviousSubmissionsDiv.innerHTML = '<p class="text-danger">Failed to load submissions.</p>';
+                }
+            } catch (error) {
+                console.error("Fetch error for Cassie's submissions:", error);
+                cassiePreviousSubmissionsDiv.innerHTML = '<p class="text-danger">Network error loading submissions.</p>';
+            }
+        }
+
+        function renderCassieSubmissions(submissions) {
+            cassiePreviousSubmissionsDiv.innerHTML = '';
+            if (submissions.length === 0) {
+                cassiePreviousSubmissionsDiv.innerHTML = '<p class="text-muted">No submissions yet.</p>';
+                return;
+            }
+            submissions.forEach(submission => {
+                const submissionDiv = document.createElement('div');
+                submissionDiv.classList.add('list-group-item', 'submission-item');
+                submissionDiv.innerHTML = `
+                    <p class="mb-1"><strong>Description:</strong> ${submission.description}</p>
+                    <img src="${submission.image_url}" alt="Submission Image" class="img-fluid mb-2 chat-image" onclick="showFullscreenImage('${submission.image_url.replace(/'/g, "\\'")}')">
+                    <small class="text-muted d-block mb-2">Submitted: ${formatDate(submission.timestamp)}</small>
+                    <div class="submission-feedback">
+                        <strong>Feedback:</strong><br>
+                        H: ${submission.feedback.h || 'No feedback yet.'}<br>
+                        Olivia: ${submission.feedback.olivia || 'No feedback yet.'}
+                    </div>
+                `;
+                cassiePreviousSubmissionsDiv.appendChild(submissionDiv);
+            });
+        }
+        fetchImageSubmissionsForCassie(); // Initial load
+        setInterval(fetchImageSubmissionsForCassie, 10000); // Refresh every 10 seconds
+    } 
+    
+    else if (currentUser === 'h' || currentUser === 'olivia') {
+        const currentImageDetailsDiv = document.getElementById('currentImageDetails');
+        const feedbackArea = document.getElementById('feedbackArea');
+        const submitFeedbackBtn = document.getElementById('submitFeedbackBtn');
+        const feedbackStatusSpan = document.getElementById('feedbackStatus');
+        const previousImageSubmissionsDiv = document.getElementById('previousImageSubmissions');
+
+        let currentSubmissionId = null;
+
+        submitFeedbackBtn.addEventListener('click', async () => {
+            if (!currentSubmissionId) {
+                feedbackStatusSpan.textContent = "No current submission to provide feedback for.";
+                feedbackStatusSpan.style.color = "red";
+                return;
+            }
+            const feedbackText = feedbackArea.value.trim();
+            if (!feedbackText) {
+                feedbackStatusSpan.textContent = "Feedback cannot be empty.";
+                feedbackStatusSpan.style.color = "red";
+                return;
+            }
+
+            feedbackStatusSpan.textContent = "Submitting feedback...";
+            feedbackStatusSpan.style.color = "blue";
+
+            try {
+                const response = await fetch(`/submit_feedback/${currentSubmissionId}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ feedback: feedbackText })
+                });
+                const data = await response.json();
+
+                if (response.ok) {
+                    feedbackStatusSpan.textContent = data.message;
+                    feedbackStatusSpan.style.color = "green";
+                    fetchImageSubmissions(); // Refresh all submissions
+                } else {
+                    feedbackStatusSpan.textContent = `Error: ${data.error || 'Unknown error'}`;
+                    feedbackStatusSpan.style.color = "red";
+                }
+            } catch (error) {
+                feedbackStatusSpan.textContent = `Network error: ${error.message}`;
+                feedbackStatusSpan.style.color = "red";
+                console.error("Feedback submission fetch error:", error);
+            }
+            setTimeout(() => feedbackStatusSpan.textContent = "", 5000); // Hide status after a delay
+        });
+
+        async function fetchImageSubmissions() {
+            try {
+                const response = await fetch('/get_image_submissions');
+                const data = await response.json();
+                if (response.ok && data.submissions) {
+                    renderImageSubmissions(data.submissions);
+                } else {
+                    console.error("Error fetching image submissions:", data.error || response.status);
+                    currentImageDetailsDiv.innerHTML = '<p class="text-danger">Failed to load submissions.</p>';
+                    previousImageSubmissionsDiv.innerHTML = '';
+                }
+            } catch (error) {
+                console.error("Fetch error for image submissions:", error);
+                currentImageDetailsDiv.innerHTML = '<p class="text-danger">Network error loading submissions.</p>';
+                previousImageSubmissionsDiv.innerHTML = '';
+            }
+        }
+
+        function renderImageSubmissions(submissions) {
+            currentImageDetailsDiv.innerHTML = '';
+            previousImageSubmissionsDiv.innerHTML = '';
+
+            if (submissions.length === 0) {
+                currentImageDetailsDiv.innerHTML = '<p class="text-muted">No submissions yet.</p>';
+                previousImageSubmissionsDiv.innerHTML = '<p class="text-muted">No previous submissions.</p>';
+                currentSubmissionId = null;
+                feedbackArea.value = '';
+                feedbackArea.disabled = true;
+                submitFeedbackBtn.disabled = true;
+                return;
+            }
+
+            // The "current" submission is the latest one
+            const currentSubmission = submissions[0];
+            currentSubmissionId = currentSubmission.id;
+            feedbackArea.disabled = false;
+            submitFeedbackBtn.disabled = false;
+
+            currentImageDetailsDiv.innerHTML = `
+                <div class="submission-item">
+                    <p class="mb-1"><strong>Description:</strong> ${currentSubmission.description}</p>
+                    <img src="${currentSubmission.image_url}" alt="Current Submission Image" class="img-fluid mb-2 chat-image" onclick="showFullscreenImage('${currentSubmission.image_url.replace(/'/g, "\\'")}')">
+                    <small class="text-muted d-block mb-2">Submitted by ${currentSubmission.uploader} on ${formatDate(currentSubmission.timestamp)}</small>
+                    <div class="submission-feedback">
+                        H's Feedback: ${currentSubmission.feedback.h || 'No feedback yet.'}<br>
+                        Olivia's Feedback: ${currentSubmission.feedback.olivia || 'No feedback yet.'}
+                    </div>
+                </div>
+            `;
+            // Pre-fill feedback area with current user's existing feedback
+            feedbackArea.value = currentSubmission.feedback[currentUser] || '';
+
+            // Render previous submissions (all except the current one)
+            if (submissions.length > 1) {
+                submissions.slice(1).forEach(submission => {
+                    const submissionDiv = document.createElement('div');
+                    submissionDiv.classList.add('list-group-item', 'submission-item');
+                    submissionDiv.innerHTML = `
+                        <p class="mb-1"><strong>Description:</strong> ${submission.description}</p>
+                        <img src="${submission.image_url}" alt="Previous Submission Image" class="img-fluid mb-2 chat-image" onclick="showFullscreenImage('${submission.image_url.replace(/'/g, "\\'")}')">
+                        <small class="text-muted d-block mb-2">Submitted by ${submission.uploader} on ${formatDate(submission.timestamp)}</small>
+                        <div class="submission-feedback">
+                            H's Feedback: ${submission.feedback.h || 'No feedback yet.'}<br>
+                            Olivia's Feedback: ${submission.feedback.olivia || 'No feedback yet.'}
+                        </div>
+                    `;
+                    previousImageSubmissionsDiv.appendChild(submissionDiv);
+                });
+            } else {
+                previousImageSubmissionsDiv.innerHTML = '<p class="text-muted">No previous submissions.</p>';
+            }
+        }
+        fetchImageSubmissions(); // Initial load
+        setInterval(fetchImageSubmissions, 10000); // Refresh every 10 seconds
+    }
 </script>
 {% endblock %}
