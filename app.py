@@ -137,7 +137,7 @@ def login():
             session.pop("password_ok", None) # Remove the session flag after successful login
 
             # Redirect to /hello as per previous instruction for CASSIE's password
-            return redirect("/hello") # Or url_for("hello_route_name") if you have a named route
+            return redirect("/") # Or url_for("hello_route_name") if you have a named route
         else:
             # If neither password matches
             return render_template("login.html", error="Incorrect password.")

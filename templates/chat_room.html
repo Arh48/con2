@@ -8,7 +8,7 @@
 <div class="container mt-4">
   <div class="row">
     <!-- Left column: Conditional content based on username -->
-    {% if current_user.username == 'cassie' %}
+    {% if current_user.username == 'cassie_user' %}
     <div class="col-lg-6 col-md-5">
         <!-- Cassie's Image Submission Form -->
         <div class="card mt-4 p-3 shadow-sm bg-light">
@@ -57,6 +57,51 @@
                 <p class="text-muted">Loading submissions...</p>
             </div>
         </div>
+
+        {# Re-added Downloads, To-Do, and Notes for 'h' and 'olivia' #}
+        <div class="mb-3 mt-4">
+            <a href="https://drive.google.com/drive/folders/1ASJykXi4KothiRkZMkX3_t-uLIjaKAVA?usp=sharing" target="_blank" class="btn btn-info w-100 d-flex align-items-center justify-content-center">
+              <i class="fab fa-google-drive me-2"></i> Project in Google Drive
+            </a>
+        </div>
+      <!-- Downloads Dropdown -->
+      <div class="dropdown mb-2">
+        <button class="btn btn-secondary dropdown-toggle w-100" type="button" id="downloadDropdown" data-bs-toggle="dropdown" aria-expanded="false">
+          Download Files
+        </button>
+        <ul class="dropdown-menu w-100" aria-labelledby="downloadDropdown">
+          {% for file in downloads %}
+          <li class="px-3 py-2">
+            <div>
+              <strong>{{ file.display }}</strong>
+              <br>
+              <span style="font-size: 0.9em; color: #555;">{{ file.description }}</span>
+            </div>
+            <a href="{{ url_for('download_file', filename=file.filename) }}" class="btn btn-sm btn-primary mt-1" style="width: 100%;">Download</a>
+          </li>
+          <li><hr class="dropdown-divider"></li>
+          {% endfor %}
+        </ul>
+      </div>
+      <!-- To-Do List -->
+      <div class="card mt-4 p-3 shadow-sm bg-light">
+        <h5 class="mb-3">📝 To-Do List</h5>
+        <div id="todo-list" class="mb-2"></div>
+        <div class="input-group mb-2">
+          <input type="text" id="new-todo" class="form-control" placeholder="Add new task...">
+          <button class="btn btn-success" id="add-todo-btn">Add</button>
+        </div>
+        <button class="btn btn-outline-secondary btn-sm mb-2" id="edit-todo-btn">Edit as text</button>
+        <textarea id="edit-todo-area" class="form-control mb-2" style="display:none; min-height:120px"></textarea>
+        <button class="btn btn-primary btn-sm mb-2" id="save-todo-btn" style="display:none;">Save Changes</button>
+      </div>
+      <!-- Notes -->
+      <div class="card mt-4 p-3 shadow-sm bg-light">
+        <h5 class="mb-3">🗒️ Notes</h5>
+        <textarea id="notes-area" class="form-control mb-2" style="min-height:120px" placeholder="Write shared notes here..."></textarea>
+        <button class="btn btn-primary btn-sm mb-2" id="save-notes-btn">Save Notes</button>
+        <span id="notes-status" style="font-size:0.9em;color:gray;"></span>
+      </div>
     </div>
     {% else %}
     <!-- Original left column content for other users -->
@@ -108,7 +153,7 @@
     {% endif %}
 
     <!-- Main chat column -->
-    <div class="{% if current_user.username == 'cassie' or current_user.username in ['h', 'olivia'] %}col-lg-6 col-md-7{% else %}col-lg-6 col-md-7{% endif %} col-12">
+    <div class="{% if current_user.username == 'cassie_user' or current_user.username in ['h', 'olivia'] %}col-lg-6 col-md-7{% else %}col-lg-6 col-md-7{% endif %} col-12">
       <div class="d-flex justify-content-between align-items-center">
         <h3 class="mb-0">Group Chat</h3>
       </div>
@@ -142,7 +187,7 @@
       </div>
     </div>
     <!-- Below chat: Info/game for mobile - Conditional visibility -->
-    {% if current_user.username not in ['cassie', 'h', 'olivia'] %}
+    {% if current_user.username not in ['cassie_user', 'h', 'olivia'] %}
     <div class="col-12 d-md-none mt-4">
       <div class="p-4 h-100 d-flex flex-column justify-content-center align-items-center" style="background: rgba(240,240,240,0.7); border-radius: 16px;">
         <h2>Welcome to the Game Project!</h2>
@@ -473,8 +518,8 @@
 
 
     // --- To-Do List logic ---
-    // Only initialize and run if not 'cassie', 'h', or 'olivia'
-    if (currentUser !== 'cassie' && currentUser !== 'h' && currentUser !== 'olivia') {
+    // Only initialize and run if not 'cassie_user'
+    if (currentUser !== 'cassie_user') {
         let todoList = [];
         const newTodo = document.getElementById('new-todo');
         const addBtn = document.getElementById('add-todo-btn');
@@ -562,8 +607,8 @@
 
 
     // --- Notes logic ---
-    // Only initialize and run if not 'cassie', 'h', or 'olivia'
-    if (currentUser !== 'cassie' && currentUser !== 'h' && currentUser !== 'olivia') {
+    // Only initialize and run if not 'cassie_user'
+    if (currentUser !== 'cassie_user') {
         const notesArea = document.getElementById('notes-area');
         const saveNotesBtn = document.getElementById('save-notes-btn');
         const notesStatus = document.getElementById('notes-status');
@@ -589,7 +634,7 @@
     }
 
     // --- Image Submission/Feedback Logic ---
-    if (currentUser === 'cassie') {
+    if (currentUser === 'cassie_user') {
         const imageSubmissionForm = document.getElementById('imageSubmissionForm');
         const imageUploadInput = document.getElementById('imageUpload');
         const imageDescriptionInput = document.getElementById('imageDescription');
