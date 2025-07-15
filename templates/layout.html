@@ -5,37 +5,37 @@
     <meta name="viewport" content="initial-scale=1, width=device-width">
     <link href="/static/favicon.ico" rel="icon">
     <title>Pokémon Shine | {% block title %}{% endblock %}</title>
+
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link id="themeStylesheet" rel="stylesheet" href="/static/styles.css">
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
+
+    <link rel="stylesheet" href="/static/styles.css">
+    <link id="themeStylesheet" rel="stylesheet" href=""> {# This will be set by JS #}
+
     <style>
+        /* Base body styles for full height and font */
         body {
-            transition: background-color 0.3s, color 0.3s;
-            min-height: 100vh;
             font-family: 'Segoe UI', 'Roboto', Arial, sans-serif;
+            min-height: 100vh; /* Ensure body takes full viewport height */
+            display: flex;
+            flex-direction: column; /* Allows main content to push footer down */
+            transition: background-color 0.3s, color 0.3s; /* Smooth theme transitions */
         }
-        body[data-theme='dark'] {
-            background-color: #20232a;
-            color: #b9bbbe;
-        }
-        body[data-theme='yellow'] {
-            background-color: #ffe066;
-            color: #212529;
-        }
-        .navbar-color {
+
+        /* Navbar styles */
+        .navbar-custom { /* Renamed for clarity, using 'navbar-color' as a gradient is specific */
             background: linear-gradient(90deg, #3b82f6 0%, #6366f1 100%);
             box-shadow: 0 4px 12px rgba(0,0,0,0.08);
         }
         .navbar-brand img {
             height: 50px;
             border-radius: 8px;
-            background: white;
-            padding: 2px;
+            /* Removed background: white; and padding: 2px; from here */
         }
         .navbar-nav .nav-link {
             font-weight: 500;
-            color: #fff !important;
+            color: #fff !important; /* Force white text */
             margin-right: 1rem;
         }
         .navbar-nav .nav-link:hover, .navbar-nav .nav-link.active {
@@ -43,7 +43,9 @@
             text-decoration: underline;
             transition: color 0.2s;
         }
-        .dropdown-menu {
+
+        /* Dropdown styles */
+        .dropdown-menu-custom { /* Renamed for clarity */
             background: #fffbea;
             border-radius: 8px;
             box-shadow: 0 4px 16px rgba(0,0,0,0.08);
@@ -52,59 +54,68 @@
             background: #ffe066;
             color: #212529;
         }
-        .container {
+
+        /* General container/card styles */
+        .container-main { /* Renamed to avoid conflict if you use .container elsewhere */
             max-width: 1100px;
         }
         .card {
             border-radius: 14px;
             box-shadow: 0 2px 10px rgba(0,0,0,0.06);
         }
+
         /* Theme overrides for dark mode */
-        body[data-theme='dark'] .navbar-color {
+        body[data-theme='dark'] {
+            background-color: #20232a;
+            color: #b9bbbe;
+        }
+        body[data-theme='dark'] .navbar-custom { /* Use custom class */
             background: linear-gradient(90deg, #16181d 0%, #23263a 100%);
         }
-        body[data-theme='dark'] .navbar-brand img {
-            background: #23263a;
-        }
-        body[data-theme='dark'] .dropdown-menu {
+        /* Removed .navbar-brand img background from dark mode override */
+        body[data-theme='dark'] .dropdown-menu-custom { /* Use custom class */
             background: #23263a;
             color: #b9bbbe;
         }
-        body[data-theme='dark'] .dropdown-item:hover, 
+        body[data-theme='dark'] .dropdown-item:hover,
         body[data-theme='dark'] .dropdown-item.active {
             background: #3b82f6;
             color: #fff;
         }
-        body[data-theme='yellow'] .navbar-color {
+
+        /* Theme overrides for yellow mode */
+        body[data-theme='yellow'] {
+            background-color: #ffe066;
+            color: #212529;
+        }
+        body[data-theme='yellow'] .navbar-custom { /* Use custom class */
             background: linear-gradient(90deg, #ffe066 0%, #ffea8a 100%);
         }
-        body[data-theme='yellow'] .navbar-brand img {
-            background: #fff9db;
-        }
+        /* Removed .navbar-brand img background from yellow mode override */
+
         /* Responsive tweaks */
         @media (max-width: 767px) {
             .navbar-brand img { height: 36px; }
-            .container { max-width: 98vw; }
+            .container-main { max-width: 98vw; }
         }
     </style>
 </head>
-<body>
-    <nav class="navbar navbar-expand-md navbar-color py-2">
+<body data-theme="light"> {# Set initial data-theme here, JS will override from localStorage #}
+    <nav class="navbar navbar-expand-md navbar-custom py-2">
         <div class="container-fluid">
             <a class="navbar-brand" href="/">
-                <img src="/static/logo.png" alt="WebChat Logo">
+                <img id="siteLogo" src="/static/logo.png" alt="WebChat Logo"> {# Added id="siteLogo" #}
             </a>
             <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbar">
                 <span class="navbar-toggler-icon"></span>
             </button>
             <div class="collapse navbar-collapse" id="navbar">
-                <div class="d-flex justify-content-center flex-grow-1">
+                <div class="d-flex flex-grow-1">
                     {% if current_user.is_authenticated %}
-                    <ul class="navbar-nav me-auto mt-2">
-                        {% if current_user.username == "h" or "olivia"%}
+                    <ul class="navbar-nav me-auto">
+                        {% if current_user.username == "h" or current_user.username == "olivia" %}
                             <li class="nav-item"><a class="nav-link" href="/upload">Upload </a></li>
                         {% endif %}
-                        
                         <li class="nav-item"><a class="nav-link" href="/emulator">Emulate </a></li>
                         {% if current_user.username == "h" %}
                             <li class="nav-item">
@@ -115,28 +126,27 @@
                         {% endif %}
                     </ul>
                     {% else %}
-                    <ul class="navbar-nav ms-auto mt-2">
+                    <ul class="navbar-nav ms-auto">
                         <li class="nav-item"><a class="nav-link" href="/register">Register</a></li>
                         <li class="nav-item"><a class="nav-link" href="/login">Log In</a></li>
                     </ul>
                     {% endif %}
                 </div>
-                <ul class="navbar-nav ms-auto mt-2">
+                <ul class="navbar-nav ms-auto">
                     {% if current_user.is_authenticated %}
-                    <li class="nav-item d-flex align-items-center">
-                        <span class="me-3 fw-semibold">{{ current_user.username }} {{ current_user.emoji }}</span>
-                        <li class="nav-item dropdown">
-                            <a class="nav-link dropdown-toggle" href="#" id="navbarDropdown" role="button" data-bs-toggle="dropdown">
-                                Themes
-                            </a>
-                            <div class="dropdown-menu">
-                                <a class="dropdown-item" href="#" id="toggleLightMode">Light Mode</a>
-                                <a class="dropdown-item" href="#" id="toggleDarkMode">Dark Mode</a>
-                                <a class="dropdown-item" href="#" id="toggleYellowMode">Yellow Mode</a>
-                            </div>
-                        </li>
+                    <li class="nav-item d-flex align-items-center me-3">
+                        <span class="fw-semibold">{{ current_user.username }} {{ current_user.emoji }}</span>
                     </li>
-                    
+                    <li class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle" href="#" id="navbarDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                            Themes
+                        </a>
+                        <div class="dropdown-menu dropdown-menu-custom">
+                            <a class="dropdown-item" href="#" id="toggleLightMode">Light Mode</a>
+                            <a class="dropdown-item" href="#" id="toggleDarkMode">Dark Mode</a>
+                            <a class="dropdown-item" href="#" id="toggleYellowMode">Yellow Mode</a>
+                        </div>
+                    </li>
                     <li class="nav-item"><a class="nav-link" href="/logout">Log Out</a></li>
                     {% endif %}
                 </ul>
@@ -144,12 +154,15 @@
         </div>
     </nav>
 
-    {% block main %}{% endblock %}
+    <main class="flex-grow-1">
+        {% block main %}{% endblock %}
+    </main>
 
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
     <script>
         // Panic redirect on End key
         document.addEventListener('keydown', function(event) {
-            if (event.key === 'End') { 
+            if (event.key === 'End') {
                 const panicUrl = localStorage.getItem('panicRedirectUrl');
                 if (panicUrl) {
                     window.open(panicUrl, '_blank');
@@ -159,7 +172,7 @@
             }
         });
 
-        // Store panic URL from textbox if present
+        // Store panic URL from textbox if present (ensures 'panicUrl' input exists on page)
         document.addEventListener('DOMContentLoaded', function() {
             const panicInput = document.getElementById('panicUrl');
             if (panicInput) {
@@ -172,23 +185,36 @@
         // Theme toggling
         document.addEventListener('DOMContentLoaded', function () {
             const themeStylesheet = document.getElementById('themeStylesheet');
+            const siteLogo = document.getElementById('siteLogo'); // Get the logo element
             const lightModeToggle = document.getElementById('toggleLightMode');
             const darkModeToggle = document.getElementById('toggleDarkMode');
             const yellowModeToggle = document.getElementById('toggleYellowMode');
 
+            // Get theme from localStorage, default to 'light'
             let currentTheme = localStorage.getItem('theme') || 'light';
-            applyTheme(currentTheme);
+            applyTheme(currentTheme); // Apply theme on load
 
             function applyTheme(theme) {
                 document.body.setAttribute('data-theme', theme);
-                themeStylesheet.setAttribute('href', 
+                // Set the correct theme stylesheet based on the selected theme
+                themeStylesheet.setAttribute('href',
                     theme === 'dark' ? '/static/dark-mode.css' :
                     theme === 'yellow' ? '/static/yellow-mode.css' :
                     '/static/styles.css'
                 );
-                localStorage.setItem('theme', theme);
+                localStorage.setItem('theme', theme); // Save theme preference
+
+                // Logic to swap logo based on theme
+                if (siteLogo) { // Ensure the logo element exists
+                    if (theme === 'dark') {
+                        siteLogo.src = '/static/logo-dark.png';
+                    } else {
+                        siteLogo.src = '/static/logo.png';
+                    }
+                }
             }
 
+            // Event listeners for theme toggles
             if (lightModeToggle) lightModeToggle.addEventListener('click', () => applyTheme('light'));
             if (darkModeToggle) darkModeToggle.addEventListener('click', () => applyTheme('dark'));
             if (yellowModeToggle) yellowModeToggle.addEventListener('click', () => applyTheme('yellow'));
@@ -196,7 +222,5 @@
             console.log("Current theme applied:", currentTheme);
         });
     </script>
-    <!-- Optionally include Bootstrap Icons for extra polish -->
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
 </body>
 </html>

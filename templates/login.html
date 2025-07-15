@@ -3,8 +3,8 @@
 {% block title %}Login{% endblock %}
 
 {% block main %}
-<div class="container mt-5">
-    <div class="row justify-content-center">
+<div class="container mt-5 d-flex flex-column min-vh-100"> {# Added flexbox classes here #}
+    <div class="row justify-content-center flex-grow-1"> {# Added flex-grow-1 here #}
         <div class="col-md-4">
             <h2 class="mb-4 text-center">Login</h2>
             <form method="POST" action="{{ url_for('login') }}">
@@ -18,6 +18,11 @@
             <div class="alert alert-danger mt-3">{{ error }}</div>
             {% endif %}
         </div>
+    </div>
+
+    {# This div is now inside the main block, pushed to the bottom by flexbox #}
+    <div class="text-center text-muted small py-3 mt-auto">
+        Powered by CyberTalk | ©2025 Areo Co. Game Dev Division
     </div>
 </div>
 {% endblock %}
