@@ -272,13 +272,16 @@
         }
     }
     .chat-image {
-        max-width: 200px;
-        max-height: 200px;
+        max-width: 250px; /* Increased size */
+        max-height: 250px; /* Increased size */
         border-radius: 10px;
         margin: 5px 0;
         display: block;
         cursor: pointer;
         transition: box-shadow .25s;
+        image-rendering: pixelated; /* Pixelated effect */
+        image-rendering: -moz-crisp-edges; /* Firefox */
+        image-rendering: crisp-edges; /* Standard */
     }
     .chat-image:hover {
         box-shadow: 0 4px 24px #2225;
@@ -308,6 +311,9 @@
         height: auto;
         border-radius: 4px;
         margin-bottom: 8px;
+        image-rendering: pixelated; /* Pixelated effect */
+        image-rendering: -moz-crisp-edges; /* Firefox */
+        image-rendering: crisp-edges; /* Standard */
     }
     .submission-feedback {
         font-size: 0.9em;

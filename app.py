@@ -40,7 +40,7 @@ IMAGE_SUBMISSIONS_META_FILE = os.path.join(os.getcwd(), "image_submissions.json"
 
 ALLOWED_EXTENSIONS = {"gb", "gbc", "gba", "png", "jpg", "jpeg", "gif"} # Updated to allow image extensions
 HARDCODED_PASSWORD_HASH = generate_password_hash("PocketMonstersShine123!")  # Use a secure password!
-CASSIE = generate_password_hash("h")
+CASSIE = generate_password_hash("ilovedoingthisart123!")
 
 # Define the username for CASSIE's password at the module level
 USERNAME_FOR_CASSIE = "cassie_user" # Renamed to uppercase for consistency with constants
@@ -49,16 +49,16 @@ USERNAME_FOR_CASSIE = "cassie_user" # Renamed to uppercase for consistency with 
 IMAGESUB_REPO_OWNER = "Arh48"
 IMAGESUB_REPO_NAME = "imagesub"
 IMAGESUB_REPO_FILE = "image_submissions.json" # The meta file within the repo
-IMAGESUB_REPO_BRANCH = "main" # Or 'master' depending on your repo
+# IMAGESUB_REPO_BRANCH = "main" # Removed this, will determine dynamically
 
 # Downloadable files metadata
 DOWNLOADS_META = [
     {"filename": "shine v0.0.1.gb", "display": "Shine v0.0.1", "description": "First alpha build."},
-    {"filename": "shine v0.0.2.gb", "display": "Shine v0.0.2", "description": "Added first map"},
-    {"filename": "shine v0.0.5.gb", "display": "Shine v0.0.5", "description": "Added new features"},
-    {"filename": "shine v0.0.6.gb", "display": "Shine v0.0.6", "description": "Added new features"},
-    {"filename": "shine v0.0.7.gb", "display": "Shine v0.0.7", "description": "Added new features"},
-    {"filename": "shine v0.0.8.gb", "display": "Shine v0.0.8", "description": "Added new features"},
+    {"filename": "shine v0.0.2.gb", "display": "Shine v0.0.2", "description": "Added first map."},
+    {"filename": "shine v0.0.5.gb", "display": "Shine v0.0.5", "description": "Added new features."},
+    {"filename": "shine v0.0.6.gb", "display": "Shine v0.0.6", "description": "Added new features."},
+    {"filename": "shine v0.0.7.gb", "display": "Shine v0.0.7", "description": "Added new features."},
+    {"filename": "shine v0.0.8.gb", "display": "Shine v0.0.8", "description": "Added new features."},
     {"filename": "shine v0.0.9.gb", "display": "Shine v0.0.9", "description": "Introduced Passwords: Password is 5972"},
     {"filename": "shine v0.1.0.gb", "display": "Shine v0.1.0", "description": "Test of transition between scenes: Password is 8304"},
     {"filename": "shine v0.1.1.gb", "display": "Shine v0.1.1", "description": "Smooth transition! Password is 7608"},
@@ -137,7 +137,7 @@ def login():
             session.pop("password_ok", None) # Remove the session flag after successful login
 
             # Redirect to /hello as per previous instruction for CASSIE's password
-            return redirect("/") # Or url_for("hello_route_name") if you have a named route
+            return redirect("/hello") # Or url_for("hello_route_name") if you have a named route
         else:
             # If neither password matches
             return render_template("login.html", error="Incorrect password.")
@@ -165,7 +165,7 @@ def choose_username():
         user = User()
         user.id = rows[0]["id"]
         user.username = rows[0]["username"]
-        user.emoji = rows[0].get("emoji", "�")
+        user.emoji = rows[0].get("emoji", "🙂")
         login_user(user)
         session.pop("password_ok", None)
         return redirect(url_for("index"))
@@ -338,13 +338,20 @@ def git_push_image_submissions(commit_message="Update image submissions"):
     try:
         repo = Repo(repo_dir)
 
-        # Checkout the correct branch
+        # Determine the correct branch (main or master)
+        target_branch = None
         try:
-            repo.git.checkout(IMAGESUB_REPO_BRANCH)
-            log(f"Checked out '{IMAGESUB_REPO_BRANCH}' branch for image submissions")
-        except GitCommandError as e:
-            log(f"ERROR: Cannot checkout '{IMAGESUB_REPO_BRANCH}' branch for image submissions: {e}")
-            return False, f"Cannot checkout '{IMAGESUB_REPO_BRANCH}' branch!"
+            repo.git.checkout('main')
+            target_branch = 'main'
+            log("Checked out 'main' branch for image submissions")
+        except GitCommandError:
+            try:
+                repo.git.checkout('master')
+                target_branch = 'master'
+                log("Checked out 'master' branch (fallback) for image submissions")
+            except GitCommandError:
+                log("ERROR: Neither 'main' nor 'master' branch exists for image submissions repo!")
+                return False, "No main/master branch to push to for image submissions!"
 
         remotes = [remote.name for remote in repo.remotes]
         if REMOTE_NAME in remotes:
@@ -356,8 +363,8 @@ def git_push_image_submissions(commit_message="Update image submissions"):
         # --- PULL BEFORE PUSH ---
         try:
             origin = repo.remote(REMOTE_NAME)
-            origin.pull(IMAGESUB_REPO_BRANCH)
-            log(f"Pulled latest changes from '{IMAGESUB_REPO_BRANCH}' for image submissions.")
+            origin.pull(target_branch)
+            log(f"Pulled latest changes from '{target_branch}' for image submissions.")
         except GitCommandError as e:
             log(f"WARNING: Git pull failed for image submissions: {e}. Attempting to proceed with push.")
         # --- END PULL BEFORE PUSH ---
@@ -381,8 +388,8 @@ def git_push_image_submissions(commit_message="Update image submissions"):
                 return True, "Nothing new to commit for image submissions."
             return False, f"Image submission Git commit error: {e}"
 
-        repo.remote(REMOTE_NAME).push(IMAGESUB_REPO_BRANCH)
-        log(f"Pushed to remote '{IMAGESUB_REPO_BRANCH}' branch for image submissions")
+        repo.remote(REMOTE_NAME).push(target_branch)
+        log(f"Pushed to remote '{target_branch}' branch for image submissions")
         return True, "Pushed image submissions to git successfully."
 
     except Exception as e:
@@ -401,24 +408,63 @@ def sync_image_submissions_local_from_github():
     remote_url = f"https://{github_token}@github.com/{IMAGESUB_REPO_OWNER}/{IMAGESUB_REPO_NAME}.git"
 
     try:
-        if os.path.isdir(temp_repo_dir):
-            # If repo already exists, pull latest changes
+        # Check if the temporary repo already exists and is a valid Git repo
+        if os.path.isdir(temp_repo_dir) and os.path.isdir(os.path.join(temp_repo_dir, '.git')):
             repo = Repo(temp_repo_dir)
             origin = repo.remote()
-            origin.pull(IMAGESUB_REPO_BRANCH)
-            log(f"Pulled latest image submissions from {IMAGESUB_REPO_NAME}.")
+            # Try pulling 'main' first, then 'master'
+            try:
+                origin.pull('main')
+                log(f"Pulled latest image submissions from 'main' branch.")
+            except GitCommandError as e_pull_main:
+                log(f"Pulling 'main' failed: {e_pull_main}. Trying 'master' branch.")
+                try:
+                    origin.pull('master')
+                    log(f"Pulled latest image submissions from 'master' branch.")
+                except GitCommandError as e_pull_master:
+                    log(f"Pulling 'master' also failed: {e_pull_master}. Assuming repo might be empty or inaccessible.")
+                    # If pull fails on both, it might be an empty repo or a new one.
+                    # We'll proceed to ensure local files are initialized.
         else:
-            # Clone the repo if it doesn't exist
-            Repo.clone_from(remote_url, temp_repo_dir, branch=IMAGESUB_REPO_BRANCH)
-            log(f"Cloned {IMAGESUB_REPO_NAME} to {temp_repo_dir}.")
+            # Clean up if a partial/failed clone exists
+            if os.path.exists(temp_repo_dir):
+                shutil.rmtree(temp_repo_dir)
+                log(f"Cleaned up existing non-Git or incomplete repo at {temp_repo_dir}.")
 
+            # Attempt to clone. This will clone the default branch if one exists.
+            try:
+                Repo.clone_from(remote_url, temp_repo_dir)
+                log(f"Cloned {IMAGESUB_REPO_NAME} to {temp_repo_dir} (default branch).")
+            except GitCommandError as e_clone:
+                if "Remote branch" in str(e_clone) and "not found" in str(e_clone) and "upstream origin" in str(e_clone):
+                    log(f"WARNING: Cloning failed because no remote branch found. This often means the repo is empty: {e_clone}")
+                    # If the repo is truly empty (no initial commit), the clone will fail like this.
+                    # We proceed by ensuring local directories/files exist.
+                    if not os.path.exists(IMAGES_SUBMISSION_FOLDER):
+                        os.makedirs(IMAGES_SUBMISSION_FOLDER)
+                    if not os.path.exists(IMAGE_SUBMISSIONS_META_FILE):
+                        with open(IMAGE_SUBMISSIONS_META_FILE, 'w') as f:
+                            json.dump([], f)
+                    return True, "Image submissions repo is empty on GitHub, initialized locally."
+                else:
+                    log(f"ERROR: Unexpected Git clone error: {e_clone}")
+                    return False, f"Failed to clone image submissions repo: {e_clone}"
+            except Exception as e:
+                log(f"ERROR: General error during initial clone: {e}")
+                return False, f"General error during initial clone: {e}"
+
+        # If we reached here, a clone or pull was successful (or it was an empty repo handled above)
         # Copy image_submissions.json
         source_meta_file = os.path.join(temp_repo_dir, IMAGESUB_REPO_FILE)
         if os.path.exists(source_meta_file):
             shutil.copyfile(source_meta_file, IMAGE_SUBMISSIONS_META_FILE)
             log(f"Copied {IMAGESUB_REPO_FILE} from temp repo to local.")
         else:
-            log(f"WARNING: {IMAGESUB_REPO_FILE} not found in cloned repo.")
+            log(f"WARNING: {IMAGESUB_REPO_FILE} not found in cloned repo. Initializing empty local meta file.")
+            # Ensure local meta file exists even if not found in cloned repo
+            if not os.path.exists(IMAGE_SUBMISSIONS_META_FILE):
+                with open(IMAGE_SUBMISSIONS_META_FILE, 'w') as f:
+                    json.dump([], f)
 
         # Copy image files from the repo's IMAGES_SUBMISSIONS folder to local IMAGES_SUBMISSION_FOLDER
         source_images_dir = os.path.join(temp_repo_dir, "IMAGE_SUBMISSIONS") # Assuming this structure in the git repo
@@ -439,7 +485,9 @@ def sync_image_submissions_local_from_github():
                     shutil.copy2(s, d)
             log(f"Copied image files from {source_images_dir} to {IMAGES_SUBMISSION_FOLDER}.")
         else:
-            log(f"WARNING: 'IMAGE_SUBMISSIONS' directory not found in cloned repo at {source_images_dir}.")
+            log(f"WARNING: 'IMAGE_SUBMISSIONS' directory not found in cloned repo at {source_images_dir}. Ensuring local folder exists.")
+            if not os.path.exists(IMAGES_SUBMISSION_FOLDER):
+                os.makedirs(IMAGES_SUBMISSION_FOLDER)
 
         return True, "Image submissions synced successfully."
 
@@ -456,13 +504,22 @@ def load_image_submissions_meta():
     sync_image_submissions_local_from_github() 
 
     if not os.path.exists(IMAGE_SUBMISSIONS_META_FILE):
-        log("No image submissions meta file found locally after sync attempt.")
+        log("No image submissions meta file found locally after sync attempt. Creating empty list.")
+        # If after sync, the file still doesn't exist, create an empty one.
+        with open(IMAGE_SUBMISSIONS_META_FILE, 'w') as f:
+            json.dump([], f)
         return []
     try:
         with open(IMAGE_SUBMISSIONS_META_FILE, "r") as f:
             data = json.load(f)
             log(f"Loaded image submissions meta: {data}")
             return data
+    except json.JSONDecodeError as e:
+        log(f"Error decoding image_submissions.json: {e}. File might be corrupt or empty. Reinitializing.")
+        # If JSON is invalid, reinitialize it as an empty list
+        with open(IMAGE_SUBMISSIONS_META_FILE, 'w') as f:
+            json.dump([], f)
+        return []
     except Exception as e:
         log(f"Error loading image submissions meta: {e}")
         return []
@@ -845,7 +902,7 @@ def upload():
             flash('Only .gb files are allowed.', 'danger')
             return redirect(request.url)
         if not description:
-            log("Description not provided.")
+            log("Description required.")
             flash('Description required.', 'danger')
             return redirect(request.url)
         filename = secure_filename(file.filename)
