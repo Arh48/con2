@@ -40,7 +40,7 @@ IMAGE_SUBMISSIONS_META_FILE = os.path.join(os.getcwd(), "image_submissions.json"
 
 ALLOWED_EXTENSIONS = {"gb", "gbc", "gba", "png", "jpg", "jpeg", "gif"} # Updated to allow image extensions
 HARDCODED_PASSWORD_HASH = generate_password_hash("PocketMonstersShine123!")  # Use a secure password!
-CASSIE = generate_password_hash("h")
+CASSIE = generate_password_hash("ilovedoingthisart123!")
 
 # Define the username for CASSIE's password at the module level
 USERNAME_FOR_CASSIE = "cassie_user" # Renamed to uppercase for consistency with constants
