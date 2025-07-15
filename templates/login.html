@@ -3,8 +3,8 @@
 {% block title %}Login{% endblock %}
 
 {% block main %}
-<div class="container mt-5 d-flex flex-column min-vh-100"> {# Added flexbox classes here #}
-    <div class="row justify-content-center flex-grow-1"> {# Added flex-grow-1 here #}
+<div class="container mt-5"> {# Removed flexbox classes, layout.html handles overall page flex #}
+    <div class="row justify-content-center"> {# Removed flex-grow-1, not needed here #}
         <div class="col-md-4">
             <h2 class="mb-4 text-center">Login</h2>
             <form method="POST" action="{{ url_for('login') }}">
@@ -19,10 +19,6 @@
             {% endif %}
         </div>
     </div>
-
-    {# This div is now inside the main block, pushed to the bottom by flexbox #}
-    <div class="text-center text-muted small py-3 mt-auto">
-        Powered by CyberTalk | ©2025 Areo Co. Game Dev Division
-    </div>
+    {# REMOVED: The "Powered by CyberTalk" div was here. It's now in layout.html #}
 </div>
 {% endblock %}
