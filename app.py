@@ -51,6 +51,10 @@ IMAGESUB_REPO_NAME = "imagesub"
 IMAGESUB_REPO_FILE = "image_submissions.json" # The meta file within the repo
 # IMAGESUB_REPO_BRANCH = "main" # Removed this, will determine dynamically
 
+# Constants for image submission repo path
+IMAGE_SUBMISSIONS_CLONE_DIR = "/tmp/image_submissions_repo"
+
+
 # Downloadable files metadata
 DOWNLOADS_META = [
     {"filename": "shine v0.0.1.gb", "display": "Shine v0.0.1", "description": "First alpha build."},
@@ -137,7 +141,7 @@ def login():
             session.pop("password_ok", None) # Remove the session flag after successful login
 
             # Redirect to /hello as per previous instruction for CASSIE's password
-            return redirect("/hello") # Or url_for("hello_route_name") if you have a named route
+            return redirect("/") # Or url_for("hello_route_name") if you have a named route
         else:
             # If neither password matches
             return render_template("login.html", error="Incorrect password.")
@@ -320,13 +324,10 @@ def git_push_downloads(commit_message="Update downloads"):
         log(f"Git error: {e}")
         return False, f"Git error: {e}"
     
-# --- New Git Push for Image Submissions (with pull before push) ---
+# --- Git Push for Image Submissions (now operates on the cloned repo) ---
 def git_push_image_submissions(commit_message="Update image submissions"):
-    repo_dir = os.getcwd() # Assuming the repo is the current working directory
-    log(f"git_push_image_submissions called from dir: {repo_dir}")
-    log(f"IMAGES_SUBMISSION_FOLDER exists? {os.path.isdir(IMAGES_SUBMISSION_FOLDER)}")
-    log(f"IMAGE_SUBMISSIONS_META_FILE exists? {os.path.exists(IMAGE_SUBMISSIONS_META_FILE)}")
-
+    log(f"git_push_image_submissions called for repo at: {IMAGE_SUBMISSIONS_CLONE_DIR}")
+    
     github_token = os.environ.get("GITHUB_TOKEN")
     if not github_token:
         log("GITHUB_TOKEN environment variable not set. Skipping git push for image submissions.")
@@ -336,22 +337,29 @@ def git_push_image_submissions(commit_message="Update image submissions"):
     REMOTE_NAME = "imagesub_autopush" # Unique remote name for this repo
 
     try:
-        repo = Repo(repo_dir)
+        # Ensure the repo exists and is up-to-date before pushing
+        if not os.path.isdir(IMAGE_SUBMISSIONS_CLONE_DIR) or not os.path.isdir(os.path.join(IMAGE_SUBMISSIONS_CLONE_DIR, '.git')):
+            log(f"Image submissions repo not found or invalid at {IMAGE_SUBMISSIONS_CLONE_DIR}. Attempting to re-clone.")
+            sync_success, sync_msg = sync_image_submissions_local_from_github()
+            if not sync_success:
+                return False, f"Failed to prepare repo for push: {sync_msg}"
+
+        repo = Repo(IMAGE_SUBMISSIONS_CLONE_DIR)
 
         # Determine the correct branch (main or master)
         target_branch = None
         try:
             repo.git.checkout('main')
             target_branch = 'main'
-            log("Checked out 'main' branch for image submissions")
+            log("Checked out 'main' branch for image submissions push")
         except GitCommandError:
             try:
                 repo.git.checkout('master')
                 target_branch = 'master'
-                log("Checked out 'master' branch (fallback) for image submissions")
+                log("Checked out 'master' branch (fallback) for image submissions push")
             except GitCommandError:
-                log("ERROR: Neither 'main' nor 'master' branch exists for image submissions repo!")
-                return False, "No main/master branch to push to for image submissions!"
+                log("ERROR: Neither 'main' nor 'master' branch exists in cloned repo for push!")
+                return False, "No main/master branch to push to in cloned repo!"
 
         remotes = [remote.name for remote in repo.remotes]
         if REMOTE_NAME in remotes:
@@ -360,41 +368,57 @@ def git_push_image_submissions(commit_message="Update image submissions"):
         repo.create_remote(REMOTE_NAME, remote_url)
         log(f"Added remote: {REMOTE_NAME} -> {remote_url}")
 
-        # --- PULL BEFORE PUSH ---
+        # --- PULL BEFORE PUSH (on the cloned repo) ---
         try:
             origin = repo.remote(REMOTE_NAME)
             origin.pull(target_branch)
-            log(f"Pulled latest changes from '{target_branch}' for image submissions.")
+            log(f"Pulled latest changes from '{target_branch}' for image submissions before push.")
         except GitCommandError as e:
-            log(f"WARNING: Git pull failed for image submissions: {e}. Attempting to proceed with push.")
+            log(f"WARNING: Git pull failed for image submissions before push: {e}. Proceeding with push.")
         # --- END PULL BEFORE PUSH ---
 
-        # Add the image submissions folder and the meta file
-        if os.path.isdir(IMAGES_SUBMISSION_FOLDER):
-            repo.git.add(IMAGES_SUBMISSION_FOLDER)
-            log(f"Staged {IMAGES_SUBMISSION_FOLDER} for commit.")
-        if os.path.exists(IMAGE_SUBMISSIONS_META_FILE):
-            repo.git.add(IMAGE_SUBMISSIONS_META_FILE)
-            log(f"Staged {IMAGE_SUBMISSIONS_META_FILE} for commit.")
+        # Copy the latest local files to the cloned repo before adding/committing
+        # This is crucial: Ensure the files in the *cloned repo* are what we want to push.
+        # Copy image_submissions.json
+        shutil.copyfile(IMAGE_SUBMISSIONS_META_FILE, os.path.join(IMAGE_SUBMISSIONS_CLONE_DIR, IMAGESUB_REPO_FILE))
+        log(f"Copied app's local {IMAGESUB_REPO_FILE} to cloned repo.")
+
+        # Copy all image submission subfolders/files from app's local to cloned repo
+        if os.path.exists(IMAGES_SUBMISSION_FOLDER):
+            dest_images_dir_in_cloned_repo = os.path.join(IMAGE_SUBMISSIONS_CLONE_DIR, "IMAGE_SUBMISSIONS")
+            # Ensure the destination directory exists and is empty for a clean copy
+            if os.path.exists(dest_images_dir_in_cloned_repo):
+                shutil.rmtree(dest_images_dir_in_cloned_repo) 
+            shutil.copytree(IMAGES_SUBMISSION_FOLDER, dest_images_dir_in_cloned_repo, dirs_exist_ok=True)
+            log(f"Copied app's local {IMAGES_SUBMISSION_FOLDER} to cloned repo.")
+        else:
+            log(f"WARNING: App's local {IMAGES_SUBMISSION_FOLDER} not found, nothing to copy to cloned repo.")
+
+
+        # Add the image submissions folder and the meta file within the cloned repo
+        repo.git.add(IMAGESUB_REPO_FILE)
+        if os.path.isdir(os.path.join(IMAGE_SUBMISSIONS_CLONE_DIR, "IMAGE_SUBMISSIONS")):
+            repo.git.add("IMAGE_SUBMISSIONS")
+            log(f"Staged IMAGE_SUBMISSIONS folder in cloned repo.")
         
-        log(f"Image submission git status:\n{repo.git.status()}")
+        log(f"Image submission git status in cloned repo:\n{repo.git.status()}")
 
         try:
             commit = repo.index.commit(commit_message)
-            log(f"Image submission commit made: {commit.hexsha} - {commit_message}")
+            log(f"Image submission commit made in cloned repo: {commit.hexsha} - {commit_message}")
         except GitCommandError as e:
-            log(f"Image submission Git commit error: {e}")
+            log(f"Image submission Git commit error in cloned repo: {e}")
             if "nothing to commit" in str(e):
                 return True, "Nothing new to commit for image submissions."
             return False, f"Image submission Git commit error: {e}"
 
         repo.remote(REMOTE_NAME).push(target_branch)
-        log(f"Pushed to remote '{target_branch}' branch for image submissions")
+        log(f"Pushed to remote '{target_branch}' branch for image submissions successfully.")
         return True, "Pushed image submissions to git successfully."
 
     except Exception as e:
-        log(f"Image submission Git error: {e}")
-        return False, f"Image submission Git error: {e}"
+        log(f"Image submission Git error during push: {e}")
+        return False, f"Image submission Git error during push: {e}"
 
 # --- New function to sync local image submissions from GitHub ---
 def sync_image_submissions_local_from_github():
@@ -404,13 +428,12 @@ def sync_image_submissions_local_from_github():
         log("GITHUB_TOKEN environment variable not set. Skipping sync for image submissions.")
         return False, "GITHUB_TOKEN not set"
 
-    temp_repo_dir = "/tmp/image_submissions_repo" # Use a temporary directory for cloning
     remote_url = f"https://{github_token}@github.com/{IMAGESUB_REPO_OWNER}/{IMAGESUB_REPO_NAME}.git"
 
     try:
         # Check if the temporary repo already exists and is a valid Git repo
-        if os.path.isdir(temp_repo_dir) and os.path.isdir(os.path.join(temp_repo_dir, '.git')):
-            repo = Repo(temp_repo_dir)
+        if os.path.isdir(IMAGE_SUBMISSIONS_CLONE_DIR) and os.path.isdir(os.path.join(IMAGE_SUBMISSIONS_CLONE_DIR, '.git')):
+            repo = Repo(IMAGE_SUBMISSIONS_CLONE_DIR)
             origin = repo.remote()
             # Try pulling 'main' first, then 'master'
             try:
@@ -427,22 +450,22 @@ def sync_image_submissions_local_from_github():
                     # We'll proceed to ensure local files are initialized.
         else:
             # Clean up if a partial/failed clone exists
-            if os.path.exists(temp_repo_dir):
-                shutil.rmtree(temp_repo_dir)
-                log(f"Cleaned up existing non-Git or incomplete repo at {temp_repo_dir}.")
+            if os.path.exists(IMAGE_SUBMISSIONS_CLONE_DIR):
+                shutil.rmtree(IMAGE_SUBMISSIONS_CLONE_DIR)
+                log(f"Cleaned up existing non-Git or incomplete repo at {IMAGE_SUBMISSIONS_CLONE_DIR}.")
 
             # Attempt to clone. This will clone the default branch if one exists.
             try:
-                Repo.clone_from(remote_url, temp_repo_dir)
-                log(f"Cloned {IMAGESUB_REPO_NAME} to {temp_repo_dir} (default branch).")
+                Repo.clone_from(remote_url, IMAGE_SUBMISSIONS_CLONE_DIR)
+                log(f"Cloned {IMAGESUB_REPO_NAME} to {IMAGE_SUBMISSIONS_CLONE_DIR} (default branch).")
             except GitCommandError as e_clone:
                 if "Remote branch" in str(e_clone) and "not found" in str(e_clone) and "upstream origin" in str(e_clone):
                     log(f"WARNING: Cloning failed because no remote branch found. This often means the repo is empty: {e_clone}")
                     # If the repo is truly empty (no initial commit), the clone will fail like this.
                     # We proceed by ensuring local directories/files exist.
-                    if not os.path.exists(IMAGES_SUBMISSION_FOLDER):
+                    if not os.path.exists(IMAGES_SUBMISSION_FOLDER): # This is the app's local folder
                         os.makedirs(IMAGES_SUBMISSION_FOLDER)
-                    if not os.path.exists(IMAGE_SUBMISSIONS_META_FILE):
+                    if not os.path.exists(IMAGE_SUBMISSIONS_META_FILE): # This is the app's local meta file
                         with open(IMAGE_SUBMISSIONS_META_FILE, 'w') as f:
                             json.dump([], f)
                     return True, "Image submissions repo is empty on GitHub, initialized locally."
@@ -454,38 +477,37 @@ def sync_image_submissions_local_from_github():
                 return False, f"General error during initial clone: {e}"
 
         # If we reached here, a clone or pull was successful (or it was an empty repo handled above)
-        # Copy image_submissions.json
-        source_meta_file = os.path.join(temp_repo_dir, IMAGESUB_REPO_FILE)
-        if os.path.exists(source_meta_file):
-            shutil.copyfile(source_meta_file, IMAGE_SUBMISSIONS_META_FILE)
-            log(f"Copied {IMAGESUB_REPO_FILE} from temp repo to local.")
+        # Copy image_submissions.json from cloned repo to app's local file
+        source_meta_file_in_cloned_repo = os.path.join(IMAGE_SUBMISSIONS_CLONE_DIR, IMAGESUB_REPO_FILE)
+        if os.path.exists(source_meta_file_in_cloned_repo):
+            shutil.copyfile(source_meta_file_in_cloned_repo, IMAGE_SUBMISSIONS_META_FILE)
+            log(f"Copied {IMAGESUB_REPO_FILE} from cloned repo to app's local.")
         else:
-            log(f"WARNING: {IMAGESUB_REPO_FILE} not found in cloned repo. Initializing empty local meta file.")
-            # Ensure local meta file exists even if not found in cloned repo
+            log(f"WARNING: {IMAGESUB_REPO_FILE} not found in cloned repo. Initializing empty app's local meta file.")
             if not os.path.exists(IMAGE_SUBMISSIONS_META_FILE):
                 with open(IMAGE_SUBMISSIONS_META_FILE, 'w') as f:
                     json.dump([], f)
 
-        # Copy image files from the repo's IMAGES_SUBMISSIONS folder to local IMAGES_SUBMISSION_FOLDER
-        source_images_dir = os.path.join(temp_repo_dir, "IMAGE_SUBMISSIONS") # Assuming this structure in the git repo
-        if os.path.isdir(source_images_dir):
+        # Copy image files from the cloned repo's IMAGES_SUBMISSIONS folder to app's local IMAGES_SUBMISSION_FOLDER
+        source_images_dir_in_cloned_repo = os.path.join(IMAGE_SUBMISSIONS_CLONE_DIR, "IMAGE_SUBMISSIONS") # Assuming this structure in the git repo
+        if os.path.isdir(source_images_dir_in_cloned_repo):
             if os.path.exists(IMAGES_SUBMISSION_FOLDER):
-                # Remove existing local image submissions to ensure a clean sync
+                # Remove existing app's local image submissions to ensure a clean sync
                 shutil.rmtree(IMAGES_SUBMISSION_FOLDER)
                 os.makedirs(IMAGES_SUBMISSION_FOLDER) # Recreate empty folder
-                log(f"Cleaned local {IMAGES_SUBMISSION_FOLDER}.")
+                log(f"Cleaned app's local {IMAGES_SUBMISSION_FOLDER}.")
 
-            # Copy all contents from source_images_dir to IMAGES_SUBMISSION_FOLDER
-            for item in os.listdir(source_images_dir):
-                s = os.path.join(source_images_dir, item)
+            # Copy all contents from source_images_dir_in_cloned_repo to app's local IMAGES_SUBMISSION_FOLDER
+            for item in os.listdir(source_images_dir_in_cloned_repo):
+                s = os.path.join(source_images_dir_in_cloned_repo, item)
                 d = os.path.join(IMAGES_SUBMISSION_FOLDER, item)
                 if os.path.isdir(s):
-                    shutil.copytree(s, d, dirs_exist_ok=True) # Use dirs_exist_ok for Python 3.8+
+                    shutil.copytree(s, d, dirs_exist_ok=True)
                 else:
                     shutil.copy2(s, d)
-            log(f"Copied image files from {source_images_dir} to {IMAGES_SUBMISSION_FOLDER}.")
+            log(f"Copied image files from cloned repo to app's local {IMAGES_SUBMISSION_FOLDER}.")
         else:
-            log(f"WARNING: 'IMAGE_SUBMISSIONS' directory not found in cloned repo at {source_images_dir}. Ensuring local folder exists.")
+            log(f"WARNING: 'IMAGE_SUBMISSIONS' directory not found in cloned repo at {source_images_dir_in_cloned_repo}. Ensuring app's local folder exists.")
             if not os.path.exists(IMAGES_SUBMISSION_FOLDER):
                 os.makedirs(IMAGES_SUBMISSION_FOLDER)
 
