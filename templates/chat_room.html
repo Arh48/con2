@@ -64,6 +64,21 @@
               <i class="fab fa-google-drive me-2"></i> Project in Google Drive
             </a>
         </div>
+        <div class="mb-3 mt-4">
+            <!-- The href attribute now points to the actual destination URL -->
+            <a href="https://1drv.ms/o/c/b38e66027044da9e/Esu5aFW_rUhFmuPorV0d_fEBusfCJx9TLoiiPXeKNkCJ0g" 
+               target="_blank" 
+               class="btn w-100 d-flex align-items-center justify-content-center" 
+               style="background-color: #8A2BE2; color: white;" 
+               onclick="onenoteWarning(event)">
+              <i class="fas fa-book me-2"></i> Documentation in OneNote
+            </a>
+        </div>
+
+        
+    
+        
+            
       <!-- Downloads Dropdown -->
       <div class="dropdown mb-2">
         <button class="btn btn-secondary dropdown-toggle w-100" type="button" id="downloadDropdown" data-bs-toggle="dropdown" aria-expanded="false">
@@ -191,9 +206,20 @@
     <div class="col-12 d-md-none mt-4">
       <div class="p-4 h-100 d-flex flex-column justify-content-center align-items-center" style="background: rgba(240,240,240,0.7); border-radius: 16px;">
         <h2>Welcome to the Game Project!</h2>
-        <p style="font-size: 1.1rem;">Here goes your game, project info, leaderboard, or any homepage content.</p>
+        <p style="font-size: 1.1rem;">Use laptop for best compatability.</p>
       </div>
     </div>
+    {% endif %}
+
+    {% if current_user.username in ['h', 'olivia'] %}
+        <div class="mb-3 mt-4">
+            <a href="https://api.render.com/deploy/srv-d1j6cbbe5dus73cvcteg?key=VktNu_BHuoc" 
+            target="_blank" 
+            class="btn btn-warning w-100 d-flex align-items-center justify-content-center" 
+            onclick="warningConfirm(event)">
+            <i class="fas fa-exclamation-triangle me-2"></i> Not up to date?
+            </a>
+        </div>
     {% endif %}
   </div>
 </div>
@@ -324,6 +350,21 @@
 </style>
 
 <script>
+    // New function for the warning button
+    function warningConfirm(event) {
+            event.preventDefault(); // Stop the link from opening immediately
+            
+            // Show the confirmation dialog
+            const confirmed = confirm("Are you sure that you want to update the site? Doing this will take 1-2 minutes off my render usage. Please note that doing this will erase all chat messages.");
+
+            // If the user confirms, navigate to the link
+            if (confirmed) {
+                const targetUrl = event.currentTarget.href; // Get the href from the clicked button
+                window.open(targetUrl, '_blank'); // Open in a new tab
+            } else {
+                console.log("Navigation to reload site cancelled by user.");
+            }
+        }
     // --- Chat logic ---
     const key = "{{ key }}";
     const messagesContainer = document.getElementById('messages');
@@ -357,7 +398,25 @@
             console.error("Fetch error:", error);
         }
     }
-
+    function onenoteWarning(event) {
+                // Prevent the default link behavior immediately
+                event.preventDefault(); 
+                
+                // Display a confirmation dialog to the user
+                // confirm() returns true if OK is clicked, false if Cancel is clicked
+                const userConfirmed = confirm("Make sure that you are in a non-school account when viewing/editing. If you are in a school account, then the school will have access to the OneNote and will be able to edit, and view the document.");
+    
+                // If the user clicked OK, then navigate to the link
+                if (userConfirmed) {
+                    // Get the URL from the href attribute of the clicked element
+                    const targetUrl = event.currentTarget.href;
+                    // Navigate to the URL
+                    window.open(targetUrl, '_blank'); // Opens in a new tab/window due to target="_blank"
+                } else {
+                    // User clicked Cancel, do nothing (stay on the current page)
+                    console.log("User cancelled navigation.");
+                }
+            }
     function formatDate(timestamp) {
         const utcDate = new Date(timestamp);
         const melbourneOffset = (utcDate.getMonth() >= 9 || utcDate.getMonth() <= 2) ? 11 : 10; // DST for Melbourne
@@ -509,16 +568,23 @@
     function showFullscreenImage(src) {
         const modal = document.getElementById('fullscreenImageModal');
         const img = document.getElementById('fullscreenImage');
+
         img.src = src;
-        modal.style.display = 'flex';
-        document.body.style.overflow = 'hidden';
+        modal.style.display = 'flex'; // Set display to flex
+        document.body.style.overflow = 'hidden'; // Prevent scrolling on the body
     }
+
     function closeFullscreenImage() {
-        document.getElementById('fullscreenImageModal').style.display = 'none';
-        document.body.style.overflow = '';
+        document.getElementById('fullscreenImageModal').style.display = 'none'; // Hide the modal
+        document.body.style.overflow = ''; // Restore body scrolling
     }
+
+    // Event listener to close modal when clicking outside the image
     document.getElementById('fullscreenImageModal').addEventListener('click', function(e) {
-        if (e.target === this) closeFullscreenImage();
+        // Only close if the click target is the modal itself, not the image inside it
+        if (e.target === this) {
+            closeFullscreenImage();
+        }
     });
 
 
