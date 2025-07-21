@@ -5,6 +5,7 @@
 {% endblock %}
 
 {% block main %}
+
 <div class="container mt-4">
   <div class="row">
     <!-- Left column: Conditional content based on username -->
@@ -71,24 +72,38 @@
               <i class="fas fa-book me-2"></i> Documentation in OneNote
             </a>
         </div>
-      <!-- Downloads Dropdown -->
-      <div class="dropdown mb-2">
-        <button class="btn btn-secondary dropdown-toggle w-100" type="button" id="downloadDropdown" data-bs-toggle="dropdown" aria-expanded="false">
-          Download Files
+      <!-- Downloads Modal Button -->
+      <div class="mb-2">
+        <button class="btn btn-secondary w-100" type="button" id="downloadPopoverBtn">
+          <i class="bi bi-download me-2"></i> Download Files
         </button>
-        <ul class="dropdown-menu w-100" aria-labelledby="downloadDropdown">
-          {% for file in downloads %}
-          <li class="px-3 py-2">
-            <div>
-              <strong>{{ file.display }}</strong>
-              <br>
-              <span style="font-size: 0.9em; color: #555;">{{ file.description }}</span>
+      </div>
+      <div id="downloadPopover" class="modal" tabindex="-1" style="display:none; background:rgba(0,0,0,0.3);">
+        <div class="modal-dialog modal-dialog-centered" style="max-width:420px;">
+          <div class="modal-content">
+            <div class="modal-header">
+              <h5 class="modal-title"><i class="bi bi-download"></i> Download Files</h5>
+              <button type="button" class="btn-close" aria-label="Close" onclick="closeDownloadPopover()"></button>
             </div>
-            <a href="{{ url_for('download_file', filename=file.filename) }}" class="btn btn-sm btn-primary mt-1" style="width: 100%;">Download</a>
-          </li>
-          <li><hr class="dropdown-divider"></li>
-          {% endfor %}
-        </ul>
+            <div class="modal-body p-0">
+              <ul class="list-group list-group-flush">
+                {% for file in downloads %}
+                <li class="list-group-item">
+                  <div>
+                    <strong>{{ file.display }}</strong><br>
+                    <span style="font-size: 0.9em; color: #555;">{{ file.description }}</span>
+                  </div>
+                  <a href="{{ url_for('download_file', filename=file.filename) }}"
+                     class="btn btn-sm btn-primary mt-1 w-100"
+                     download>
+                    Download
+                  </a>
+                </li>
+                {% endfor %}
+              </ul>
+            </div>
+          </div>
+        </div>
       </div>
       <!-- To-Do List -->
       <div class="card mt-4 p-3 shadow-sm bg-light">
@@ -118,24 +133,37 @@
               <i class="fab fa-google-drive me-2"></i> Project in Google Drive
             </a>
         </div>
-      <!-- Downloads Dropdown -->
-      <div class="dropdown mb-2">
-        <button class="btn btn-secondary dropdown-toggle w-100" type="button" id="downloadDropdown" data-bs-toggle="dropdown" aria-expanded="false">
-          Download Files
+      <div class="mb-2">
+        <button class="btn btn-secondary w-100" type="button" id="downloadPopoverBtn">
+          <i class="bi bi-download me-2"></i> Download Files
         </button>
-        <ul class="dropdown-menu w-100" aria-labelledby="downloadDropdown">
-          {% for file in downloads %}
-          <li class="px-3 py-2">
-            <div>
-              <strong>{{ file.display }}</strong>
-              <br>
-              <span style="font-size: 0.9em; color: #555;">{{ file.description }}</span>
+      </div>
+      <div id="downloadPopover" class="modal" tabindex="-1" style="display:none; background:rgba(0,0,0,0.3);">
+        <div class="modal-dialog modal-dialog-centered" style="max-width:420px;">
+          <div class="modal-content">
+            <div class="modal-header">
+              <h5 class="modal-title"><i class="bi bi-download"></i> Download Files</h5>
+              <button type="button" class="btn-close" aria-label="Close" onclick="closeDownloadPopover()"></button>
             </div>
-            <a href="{{ url_for('download_file', filename=file.filename) }}" class="btn btn-sm btn-primary mt-1" style="width: 100%;">Download</a>
-          </li>
-          <li><hr class="dropdown-divider"></li>
-          {% endfor %}
-        </ul>
+            <div class="modal-body p-0">
+              <ul class="list-group list-group-flush">
+                {% for file in downloads %}
+                <li class="list-group-item">
+                  <div>
+                    <strong>{{ file.display }}</strong><br>
+                    <span style="font-size: 0.9em; color: #555;">{{ file.description }}</span>
+                  </div>
+                  <a href="{{ url_for('download_file', filename=file.filename) }}"
+                     class="btn btn-sm btn-primary mt-1 w-100"
+                     download>
+                    Download
+                  </a>
+                </li>
+                {% endfor %}
+              </ul>
+            </div>
+          </div>
+        </div>
       </div>
       <!-- To-Do List -->
       <div class="card mt-4 p-3 shadow-sm bg-light">
@@ -337,6 +365,10 @@
         image-rendering: -moz-crisp-edges;
         image-rendering: crisp-edges;
     }
+    /* Modal styles for Download Files */
+    .modal { display: none; position: fixed; z-index: 15000; left: 0; top: 0; width: 100vw; height: 100vh; overflow-y:auto; background: rgba(0, 0, 0, 0.3);}
+    .modal.show { display: block; }
+    .modal-dialog { margin: 2rem auto; }
 </style>
 
 <script>
@@ -559,6 +591,34 @@
             closeFullscreenImage();
         }
     });
+
+    // Download popover/modal logic
+    const downloadPopover = document.getElementById('downloadPopover');
+    const downloadPopoverBtn = document.getElementById('downloadPopoverBtn');
+    if (downloadPopoverBtn) {
+      downloadPopoverBtn.addEventListener('click', function() {
+        downloadPopover.classList.add('show');
+        downloadPopover.style.display = 'block';
+        document.body.style.overflow = 'hidden';
+      });
+    }
+    function closeDownloadPopover() {
+      downloadPopover.classList.remove('show');
+      downloadPopover.style.display = 'none';
+      document.body.style.overflow = '';
+    }
+    if (downloadPopover) {
+      // Click outside modal closes it
+      downloadPopover.addEventListener('mousedown', function(e) {
+        if (e.target === downloadPopover) closeDownloadPopover();
+      });
+      // Esc key closes
+      document.addEventListener('keydown', function(e) {
+        if (downloadPopover.classList.contains('show') && e.key === 'Escape') {
+          closeDownloadPopover();
+        }
+      });
+    }
 
     if (currentUser !== 'cassie_user') {
         let todoList = [];
