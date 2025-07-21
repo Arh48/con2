@@ -57,15 +57,12 @@
                 <p class="text-muted">Loading submissions...</p>
             </div>
         </div>
-
-        {# Re-added Downloads, To-Do, and Notes for 'h' and 'olivia' #}
         <div class="mb-3 mt-4">
             <a href="https://drive.google.com/drive/folders/1ASJykXi4KothiRkZMkX3_t-uLIjaKAVA?usp=sharing" target="_blank" class="btn btn-info w-100 d-flex align-items-center justify-content-center">
               <i class="fab fa-google-drive me-2"></i> Project in Google Drive
             </a>
         </div>
         <div class="mb-3 mt-4">
-            <!-- The href attribute now points to the actual destination URL -->
             <a href="https://1drv.ms/o/c/b38e66027044da9e/Esu5aFW_rUhFmuPorV0d_fEBusfCJx9TLoiiPXeKNkCJ0g" 
                target="_blank" 
                class="btn w-100 d-flex align-items-center justify-content-center" 
@@ -74,11 +71,6 @@
               <i class="fas fa-book me-2"></i> Documentation in OneNote
             </a>
         </div>
-
-        
-    
-        
-            
       <!-- Downloads Dropdown -->
       <div class="dropdown mb-2">
         <button class="btn btn-secondary dropdown-toggle w-100" type="button" id="downloadDropdown" data-bs-toggle="dropdown" aria-expanded="false">
@@ -298,16 +290,16 @@
         }
     }
     .chat-image {
-        max-width: 250px; /* Increased size */
-        max-height: 250px; /* Increased size */
+        max-width: 250px;
+        max-height: 250px;
         border-radius: 10px;
         margin: 5px 0;
         display: block;
         cursor: pointer;
         transition: box-shadow .25s;
-        image-rendering: pixelated; /* Pixelated effect */
-        image-rendering: -moz-crisp-edges; /* Firefox */
-        image-rendering: crisp-edges; /* Standard */
+        image-rendering: pixelated;
+        image-rendering: -moz-crisp-edges;
+        image-rendering: crisp-edges;
     }
     .chat-image:hover {
         box-shadow: 0 4px 24px #2225;
@@ -315,7 +307,6 @@
     #fullscreenImageModal {
         display: flex;
     }
-    /* To-Do List extra */
     #todo-list div:hover {
         background: #f7f7f7;
         border-radius: 6px;
@@ -324,7 +315,6 @@
         font-family: monospace;
         font-size: 1em;
     }
-    /* Image Submission/Feedback Specific Styles */
     .submission-item {
         border: 1px solid #ddd;
         border-radius: 8px;
@@ -337,35 +327,29 @@
         height: auto;
         border-radius: 4px;
         margin-bottom: 8px;
-        image-rendering: pixelated; /* Pixelated effect */
-        image-rendering: -moz-crisp-edges; /* Firefox */
-        image-rendering: crisp-edges; /* Standard */
+        image-rendering: pixelated;
+        image-rendering: -moz-crisp-edges;
+        image-rendering: crisp-edges;
+        cursor: pointer;
     }
     #fullscreenImage {
-        /* Removed border-radius and box-shadow from here, moved pixelation to inline style */
-        image-rendering: pixelated; /* Pixelated effect */
-        image-rendering: -moz-crisp-edges; /* Firefox */
-        image-rendering: crisp-edges; /* Standard */
+        image-rendering: pixelated;
+        image-rendering: -moz-crisp-edges;
+        image-rendering: crisp-edges;
     }
 </style>
 
 <script>
-    // New function for the warning button
     function warningConfirm(event) {
-            event.preventDefault(); // Stop the link from opening immediately
-            
-            // Show the confirmation dialog
+            event.preventDefault();
             const confirmed = confirm("Are you sure that you want to update the site? Doing this will take 1-2 minutes off my render usage. Please note that doing this will erase all chat messages.");
-
-            // If the user confirms, navigate to the link
             if (confirmed) {
-                const targetUrl = event.currentTarget.href; // Get the href from the clicked button
-                window.open(targetUrl, '_blank'); // Open in a new tab
+                const targetUrl = event.currentTarget.href;
+                window.open(targetUrl, '_blank');
             } else {
                 console.log("Navigation to reload site cancelled by user.");
             }
         }
-    // --- Chat logic ---
     const key = "{{ key }}";
     const messagesContainer = document.getElementById('messages');
     const newMessageIndicator = document.getElementById('newMessageIndicator');
@@ -399,27 +383,18 @@
         }
     }
     function onenoteWarning(event) {
-                // Prevent the default link behavior immediately
-                event.preventDefault(); 
-                
-                // Display a confirmation dialog to the user
-                // confirm() returns true if OK is clicked, false if Cancel is clicked
-                const userConfirmed = confirm("Make sure that you are in a non-school account when viewing/editing. If you are in a school account, then the school will have access to the OneNote and will be able to edit, and view the document.");
-    
-                // If the user clicked OK, then navigate to the link
-                if (userConfirmed) {
-                    // Get the URL from the href attribute of the clicked element
-                    const targetUrl = event.currentTarget.href;
-                    // Navigate to the URL
-                    window.open(targetUrl, '_blank'); // Opens in a new tab/window due to target="_blank"
-                } else {
-                    // User clicked Cancel, do nothing (stay on the current page)
-                    console.log("User cancelled navigation.");
-                }
-            }
+        event.preventDefault();
+        const userConfirmed = confirm("Make sure that you are in a non-school account when viewing/editing. If you are in a school account, then the school will have access to the OneNote and will be able to edit, and view the document.");
+        if (userConfirmed) {
+            const targetUrl = event.currentTarget.href;
+            window.open(targetUrl, '_blank');
+        } else {
+            console.log("User cancelled navigation.");
+        }
+    }
     function formatDate(timestamp) {
         const utcDate = new Date(timestamp);
-        const melbourneOffset = (utcDate.getMonth() >= 9 || utcDate.getMonth() <= 2) ? 11 : 10; // DST for Melbourne
+        const melbourneOffset = (utcDate.getMonth() >= 9 || utcDate.getMonth() <= 2) ? 11 : 10;
         const melbourneTime = new Date(utcDate.getTime() + melbourneOffset * 60 * 60 * 1000);
 
         const dayOfWeek = melbourneTime.toLocaleString('en-US', { weekday: 'long' });
@@ -570,26 +545,21 @@
         const img = document.getElementById('fullscreenImage');
 
         img.src = src;
-        modal.style.display = 'flex'; // Set display to flex
-        document.body.style.overflow = 'hidden'; // Prevent scrolling on the body
+        modal.style.display = 'flex';
+        document.body.style.overflow = 'hidden';
     }
 
     function closeFullscreenImage() {
-        document.getElementById('fullscreenImageModal').style.display = 'none'; // Hide the modal
-        document.body.style.overflow = ''; // Restore body scrolling
+        document.getElementById('fullscreenImageModal').style.display = 'none';
+        document.body.style.overflow = '';
     }
 
-    // Event listener to close modal when clicking outside the image
     document.getElementById('fullscreenImageModal').addEventListener('click', function(e) {
-        // Only close if the click target is the modal itself, not the image inside it
         if (e.target === this) {
             closeFullscreenImage();
         }
     });
 
-
-    // --- To-Do List logic ---
-    // Only initialize and run if not 'cassie_user'
     if (currentUser !== 'cassie_user') {
         let todoList = [];
         const newTodo = document.getElementById('new-todo');
@@ -662,7 +632,6 @@
                 editBtn.style.display = "none";
             };
             saveBtn.onclick = async () => {
-                // Parse lines: [x] or [ ] at start
                 todoList = editArea.value.split(/\n/).filter(Boolean).map(line => {
                     let done = /^\s*\[x\]/i.test(line);
                     let text = line.replace(/^\s*\[[x ]\]\s*/i,"");
@@ -676,9 +645,6 @@
         });
     }
 
-
-    // --- Notes logic ---
-    // Only initialize and run if not 'cassie_user'
     if (currentUser !== 'cassie_user') {
         const notesArea = document.getElementById('notes-area');
         const saveNotesBtn = document.getElementById('save-notes-btn');
@@ -704,7 +670,6 @@
         };
     }
 
-    // --- Image Submission/Feedback Logic ---
     if (currentUser === 'cassie_user') {
         const imageSubmissionForm = document.getElementById('imageSubmissionForm');
         const imageUploadInput = document.getElementById('imageUpload');
@@ -741,9 +706,9 @@
                 if (response.ok) {
                     imageSubmitStatus.textContent = data.message;
                     imageSubmitStatus.style.color = "green";
-                    imageUploadInput.value = ''; // Clear file input
-                    imageDescriptionInput.value = ''; // Clear description
-                    fetchImageSubmissionsForCassie(); // Refresh list
+                    imageUploadInput.value = '';
+                    imageDescriptionInput.value = '';
+                    fetchImageSubmissionsForCassie();
                 } else {
                     imageSubmitStatus.textContent = `Error: ${data.error || 'Unknown error'}`;
                     imageSubmitStatus.style.color = "red";
@@ -753,7 +718,7 @@
                 imageSubmitStatus.style.color = "red";
                 console.error("Image submission fetch error:", error);
             }
-            setTimeout(() => imageSubmitStatus.style.display = 'none', 5000); // Hide status after a delay
+            setTimeout(() => imageSubmitStatus.style.display = 'none', 5000);
             imageSubmitStatus.style.display = 'block';
         });
 
@@ -784,7 +749,7 @@
                 submissionDiv.classList.add('list-group-item', 'submission-item');
                 submissionDiv.innerHTML = `
                     <p class="mb-1"><strong>Description:</strong> ${submission.description}</p>
-                    <img src="${submission.image_url}" alt="Submission Image" class="img-fluid mb-2 chat-image" onclick="showFullscreenImage('${submission.image_url.replace(/'/g, "\\'")}')">
+                    <img src="${submission.image_url}" alt="Submission Image" class="img-fluid mb-2 chat-image" style="cursor:pointer; image-rendering:pixelated;" onclick="location.href='/view_image?id=${submission.id}'">
                     <small class="text-muted d-block mb-2">Submitted: ${formatDate(submission.timestamp)}</small>
                     <div class="submission-feedback">
                         <strong>Feedback:</strong><br>
@@ -795,10 +760,9 @@
                 cassiePreviousSubmissionsDiv.appendChild(submissionDiv);
             });
         }
-        fetchImageSubmissionsForCassie(); // Initial load
-        setInterval(fetchImageSubmissionsForCassie, 10000); // Refresh every 10 seconds
+        fetchImageSubmissionsForCassie();
+        setInterval(fetchImageSubmissionsForCassie, 10000);
     } 
-    
     else if (currentUser === 'h' || currentUser === 'olivia') {
         const currentImageDetailsDiv = document.getElementById('currentImageDetails');
         const feedbackArea = document.getElementById('feedbackArea');
@@ -835,7 +799,7 @@
                 if (response.ok) {
                     feedbackStatusSpan.textContent = data.message;
                     feedbackStatusSpan.style.color = "green";
-                    fetchImageSubmissions(); // Refresh all submissions
+                    fetchImageSubmissions();
                 } else {
                     feedbackStatusSpan.textContent = `Error: ${data.error || 'Unknown error'}`;
                     feedbackStatusSpan.style.color = "red";
@@ -845,7 +809,7 @@
                 feedbackStatusSpan.style.color = "red";
                 console.error("Feedback submission fetch error:", error);
             }
-            setTimeout(() => feedbackStatusSpan.textContent = "", 5000); // Hide status after a delay
+            setTimeout(() => feedbackStatusSpan.textContent = "", 5000);
         });
 
         async function fetchImageSubmissions() {
@@ -879,21 +843,18 @@
                 submitFeedbackBtn.disabled = true;
                 return;
             }
-
-            // The "current" submission is the latest one
             const currentSubmission = submissions[0];
             currentSubmissionId = currentSubmission.id;
             feedbackArea.disabled = false;
             submitFeedbackBtn.disabled = false;
 
-            // Store current feedback area value and focus state
             const currentFeedbackValue = feedbackArea.value;
             const hasFeedbackFocus = (document.activeElement === feedbackArea);
 
             currentImageDetailsDiv.innerHTML = `
                 <div class="submission-item">
                     <p class="mb-1"><strong>Description:</strong> ${currentSubmission.description}</p>
-                    <img src="${currentSubmission.image_url}" alt="Current Submission Image" class="img-fluid mb-2 chat-image" onclick="showFullscreenImage('${currentSubmission.image_url.replace(/'/g, "\\'")}')">
+                    <img src="${currentSubmission.image_url}" alt="Current Submission Image" class="img-fluid mb-2 chat-image" style="cursor:pointer; image-rendering:pixelated;" onclick="location.href='/view_image?id=${currentSubmission.id}'">
                     <small class="text-muted d-block mb-2">Submitted by ${currentSubmission.uploader} on ${formatDate(currentSubmission.timestamp)}</small>
                     <div class="submission-feedback">
                         H's Feedback: ${currentSubmission.feedback.h || 'No feedback yet.'}<br>
@@ -901,20 +862,17 @@
                     </div>
                 </div>
             `;
-            // Only pre-fill feedback area if it doesn't have focus or its content hasn't changed
             if (!hasFeedbackFocus) {
                 feedbackArea.value = currentSubmission.feedback[currentUser] || '';
             }
 
-
-            // Render previous submissions (all except the current one)
             if (submissions.length > 1) {
                 submissions.slice(1).forEach(submission => {
                     const submissionDiv = document.createElement('div');
                     submissionDiv.classList.add('list-group-item', 'submission-item');
                     submissionDiv.innerHTML = `
                         <p class="mb-1"><strong>Description:</strong> ${submission.description}</p>
-                        <img src="${submission.image_url}" alt="Previous Submission Image" class="img-fluid mb-2 chat-image" onclick="showFullscreenImage('${submission.image_url.replace(/'/g, "\\'")}')">
+                        <img src="${submission.image_url}" alt="Previous Submission Image" class="img-fluid mb-2 chat-image" style="cursor:pointer; image-rendering:pixelated;" onclick="location.href='/view_image?id=${submission.id}'">
                         <small class="text-muted d-block mb-2">Submitted by ${submission.uploader} on ${formatDate(submission.timestamp)}</small>
                         <div class="submission-feedback">
                             H's Feedback: ${submission.feedback.h || 'No feedback yet.'}<br>
@@ -927,8 +885,8 @@
                 previousImageSubmissionsDiv.innerHTML = '<p class="text-muted">No previous submissions.</p>';
             }
         }
-        fetchImageSubmissions(); // Initial load
-        setInterval(fetchImageSubmissions, 10000); // Refresh every 10 seconds
+        fetchImageSubmissions();
+        setInterval(fetchImageSubmissions, 10000);
     }
 </script>
 {% endblock %}

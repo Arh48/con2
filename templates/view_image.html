@@ -1,0 +1,37 @@
+{% extends "layout.html" %}
+{% block title %}View Image Submission{% endblock %}
+{% block main %}
+<div class="container mt-5 text-center">
+    <h2>Image Submission</h2>
+    <div class="mt-4">
+        <img src="{{ image_url }}" alt="Submitted Image"
+            style="
+                width: 400px;
+                height: 400px;
+                min-width: 200px;
+                min-height: 200px;
+                max-width: 90vw;
+                max-height: 90vh;
+                image-rendering: pixelated;
+                image-rendering: -moz-crisp-edges;
+                image-rendering: crisp-edges;
+                border-radius:16px;
+                image-rendering: optimizeSpeed;
+            "
+        >
+    </div>
+    <div class="mt-4 text-start mx-auto" style="max-width:600px;">
+        <strong>Description:</strong> {{ description }}<br>
+        <strong>Uploader:</strong> {{ uploader }}<br>
+        <strong>Timestamp:</strong> {{ timestamp }}<br>
+        <strong>Feedback:</strong>
+        <ul>
+            <li>H: {{ feedback.get('h', 'No feedback yet.') }}</li>
+            <li>Olivia: {{ feedback.get('olivia', 'No feedback yet.') }}</li>
+        </ul>
+    </div>
+    <div class="mt-4">
+        <a href="/" class="btn btn-secondary">Back to Chat</a>
+    </div>
+</div>
+{% endblock %}

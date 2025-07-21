@@ -1237,6 +1237,39 @@ def serve_image(key, filename):
 @app.route("/emulator")
 def emulator():
     return render_template("index.html")
+@app.route("/view_image")
+@login_required
+def view_image():
+    """
+    View a single image submission by its id, with pixelation effect.
+    Query param: id
+    """
+    submission_id = request.args.get("id")
+    if not submission_id:
+        return "No image id provided.", 400
+
+    # Load all submissions and find the one matching the id
+    submissions = load_image_submissions_meta()
+    selected = None
+    for s in submissions:
+        if s.get("id") == submission_id:
+            selected = s
+            break
+
+    if not selected:
+        return "Image submission not found.", 404
+
+    # The image_url is a Flask url_for('/IMAGE_SUBMISSIONS/<submission_id>/<filename>')
+    # You can also pass description, feedback, etc.
+    return render_template(
+        "view_image.html",
+        image_url=selected["image_url"],
+        description=selected.get("description", ""),
+        uploader=selected.get("uploader", ""),
+        timestamp=selected.get("timestamp", ""),
+        feedback=selected.get("feedback", {}),
+        submission_id=submission_id
+    )
 
 if __name__ == "__main__":
     log("App starting up...")
