@@ -1,0 +1,59 @@
+{% extends "layout.html" %}
+
+{% block title %}
+    Pokemon Shine | Updates
+{% endblock %}
+
+{% block main %}
+<div class="d-flex flex-column justify-content-center align-items-center" style="min-height: 100vh;">
+    <div class="text-center mb-4 animated fadeIn">
+        <h1 class="display-4">Pokemon Shine Updates</h1>
+        <h3 class="h5">Stay up-to-date with the latest developments!</h3>
+        
+        <div class="mt-5 text-left" style="max-width: 800px;">
+            {% if updates %}
+                {% for update in updates %}
+                    <div class="mb-5">
+                        <h4 class="h4 text-primary">{{ update.updateDate }} - {{ update.updateTitle }}</h4>
+                        <p class="lead">
+                            {{ update.updateContent }}
+                        </p>
+                    </div>
+                {% endfor %}
+            {% else %}
+                <p class="lead text-muted">No updates available yet. Check back soon!</p>
+            {% endif %}
+
+            <hr class="my-5">
+
+            <p class="mt-4">
+                Check back soon for more exciting news and progress reports!
+            </p>
+        </div>
+
+        <div class="mt-5">
+            <a href="/" class="btn btn-secondary btn-lg">Back to Home</a>
+        </div>
+    </div>
+</div>
+
+<style>
+    .animated {
+        animation-duration: 0.8s;
+        animation-fill-mode: both;
+    }
+    .fadeIn {
+        animation-name: fadeIn;
+    }
+    @keyframes fadeIn {
+        from {
+            opacity: 0;
+            transform: translateY(-20px);
+        }
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+</style>
+{% endblock %}

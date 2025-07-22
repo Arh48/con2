@@ -119,6 +119,7 @@
                     <ul class="navbar-nav me-auto">
                         {% if current_user.username == "h" or current_user.username == "olivia" %}
                             <li class="nav-item"><a class="nav-link" href="/upload">Upload </a></li>
+                            <li class="nav-item"><a class="nav-link" href="/update_make">Updates</a></li>
                         {% endif %}
                         <li class="nav-item"><a class="nav-link" href="/emulator">Emulate </a></li>
                         {% if current_user.username == "h" %}
@@ -131,7 +132,7 @@
                     </ul>
                     {% else %}
                     <ul class="navbar-nav ms-auto">
-                        <li class="nav-item"><a class="nav-link" href="/register">Register</a></li>
+                        <li class="nav-item"><a class="nav-link" href="/info">Info</a></li>
                         <li class="nav-item"><a class="nav-link" href="/login">Log In</a></li>
                     </ul>
                     {% endif %}

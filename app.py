@@ -103,8 +103,212 @@ def after_request(response):
 
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+@app.route("/info/", methods=['GET'])
+def info():
+    return render_template("home1.html")
 
-# --- COMBINED AND CORRECTED LOGIN ROUTE ---
+UPDATES_FILE = 'updates.json'
+
+# --- Helper Functions for JSON File Operations ---
+UPDATES_REPO_OWNER = "Arh48" # e.g., "octocat"
+UPDATES_REPO_NAME = "todo"       # e.g., "pokemon-shine-updates"
+UPDATES_REPO_BRANCH = "main" # Or your main branch name, e.g., "master"
+UPDATES_REPO_FILE = "updates.json"
+
+# Local file path for updates (this will be a temporary copy)
+UPDATES_FILE = 'updates.json'
+# Temporary directory for cloning the GitHub repo
+REPO_DIR = "/tmp/pokemon_shine_updates_repo" # This directory will be created/used by gitpython
+
+# --- GitHub Integration Functions ---
+
+def fetch_updates_from_github():
+    """
+    Fetches updates.json from the GitHub repo and saves it locally.
+    Returns the loaded updates or an empty list on failure.
+    """
+    url = f"https://raw.githubusercontent.com/{UPDATES_REPO_OWNER}/{UPDATES_REPO_NAME}/{UPDATES_REPO_BRANCH}/{UPDATES_REPO_FILE}"
+    print(f"Attempting to fetch updates from: {url}")
+    try:
+        r = requests.get(url)
+        r.raise_for_status() # Raise an HTTPError for bad responses (4xx or 5xx)
+        
+        updates = r.json()
+        with open(UPDATES_FILE, "w") as f:
+            json.dump(updates, f, indent=2)
+        print("Updates fetched from GitHub and saved locally.")
+        return updates
+    except requests.exceptions.HTTPError as e:
+        print(f"HTTP error fetching updates from GitHub: {e.response.status_code} - {e.response.text}")
+    except requests.exceptions.ConnectionError as e:
+        print(f"Connection error fetching updates from GitHub: {e}")
+    except json.JSONDecodeError:
+        print(f"Error decoding JSON from GitHub for {UPDATES_REPO_FILE}. It might be empty or invalid JSON.")
+    except Exception as e:
+        print(f"An unexpected error occurred while fetching updates: {e}")
+    return [] # Return empty list on any error
+
+def push_updates_to_github(commit_message="Update updates.json from web app"):
+    """
+    Pushes the local updates.json to the GitHub repo.
+    Requires GITHUB_TOKEN environment variable to be set.
+    """
+    github_token = os.environ.get("GITHUB_TOKEN")
+    if not github_token:
+        print("GITHUB_TOKEN environment variable not set. Skipping remote push.")
+        return
+
+    remote_url = f"https://{github_token}@github.com/{UPDATES_REPO_OWNER}/{UPDATES_REPO_NAME}.git"
+
+    try:
+        # Check if REPO_DIR exists and is a valid git repository
+        if os.path.isdir(REPO_DIR) and os.path.isdir(os.path.join(REPO_DIR, '.git')):
+            repo = Repo(REPO_DIR)
+            # Ensure the remote URL is correct (important if token changes or repo moves)
+            if repo.remotes.origin.url != remote_url:
+                print(f"Remote URL mismatch. Updating remote for {REPO_DIR}.")
+                repo.remotes.origin.set_url(remote_url)
+            print(f"Opening existing repository at {REPO_DIR}")
+            # Clean any local changes to avoid conflicts before pulling
+            repo.git.reset('--hard')
+            repo.git.clean('-fdx')
+            # Ensure we are on the correct branch
+            if repo.active_branch.name != UPDATES_REPO_BRANCH:
+                repo.git.checkout(UPDATES_REPO_BRANCH)
+        else:
+            # If REPO_DIR exists but isn't a git repo, or doesn't exist, clone it
+            if os.path.exists(REPO_DIR):
+                print(f"Removing existing non-git directory at {REPO_DIR}")
+                shutil.rmtree(REPO_DIR)
+            print(f"Cloning repository from {remote_url} to {REPO_DIR}")
+            repo = Repo.clone_from(remote_url, REPO_DIR, branch=UPDATES_REPO_BRANCH)
+
+        # Always pull first to avoid non-fast-forward error
+        origin = repo.remote()
+        print("Pulling latest changes from remote...")
+        origin.pull(UPDATES_REPO_BRANCH)
+
+        # Copy the local updates.json to the cloned repository directory
+        shutil.copyfile(UPDATES_FILE, os.path.join(REPO_DIR, UPDATES_REPO_FILE))
+        print(f"Copied {UPDATES_FILE} to repo.")
+
+        # Add the file to git index
+        repo.git.add(UPDATES_REPO_FILE)
+
+        # Commit changes
+        try:
+            repo.index.commit(commit_message)
+            print(f"Committed changes with message: '{commit_message}'")
+        except GitCommandError as e:
+            if "nothing to commit" in str(e):
+                print("No changes to commit for updates.json.")
+                return # Exit if nothing to commit
+            else:
+                print(f"Git commit error: {e}")
+                return # Exit if commit fails for other reasons
+
+        # Push changes to remote
+        print("Pushing changes to remote...")
+        origin.push()
+        print("Updates successfully pushed to GitHub.")
+
+    except GitCommandError as e:
+        print(f"Git command error during push: {e}")
+    except Exception as e:
+        print(f"An unexpected error occurred during GitHub push: {e}")
+
+# --- Helper Functions for Local JSON File Operations (modified) ---
+
+def load_updates():
+    """
+    Loads updates from the local JSON file.
+    Attempts to fetch from GitHub first if the local file is empty or missing,
+    or if the local file is malformed.
+    """
+    # Try to load from local file first
+    if os.path.exists(UPDATES_FILE):
+        try:
+            with open(UPDATES_FILE, 'r') as f:
+                local_updates = json.load(f)
+                if local_updates: # If local file has content, use it
+                    print("Loaded updates from local file.")
+                    return local_updates
+        except json.JSONDecodeError:
+            print(f"Local {UPDATES_FILE} is malformed. Attempting to fetch from GitHub.")
+        except Exception as e:
+            print(f"Error loading local {UPDATES_FILE}: {e}. Attempting to fetch from GitHub.")
+
+    # If local file is empty, missing, or malformed, fetch from GitHub
+    print("Local updates file empty, missing, or malformed. Fetching from GitHub...")
+    return fetch_updates_from_github()
+
+def save_updates(updates):
+    """
+    Saves the list of updates to the local JSON file and then pushes to GitHub.
+    """
+    try:
+        with open(UPDATES_FILE, 'w') as f:
+            json.dump(updates, f, indent=4)
+        print("Updates saved locally.")
+        push_updates_to_github() # Push changes to GitHub after local save
+    except Exception as e:
+        print(f"Error saving updates locally or pushing to GitHub: {e}")
+
+@app.route("/updates")
+def updates_page():
+    """
+    Renders the updates page, loading all updates from the JSON file.
+    Updates are sorted by date in descending order (newest first).
+    """
+    updates = load_updates()
+    # Sort updates by date in descending order (newest first)
+    # Assuming 'updateDate' is in 'YYYY-MM-DD' format for easy string comparison
+    sorted_updates = sorted(updates, key=lambda x: x.get('updateDate', ''), reverse=True)
+    return render_template('updates.html', updates=sorted_updates)
+
+@app.route("/update-make")
+def create_update_form():
+    """Renders the form page for creating a new update."""
+    return render_template('update_make.html')
+
+@app.route("/submit-update", methods=["POST"])
+def submit_update():
+    """
+    Handles the submission of the new update form.
+    It reads the form data, appends it to the existing updates,
+    and saves the updated list back to the JSON file.
+    """
+    if request.method == "POST":
+        # Get data from the submitted form
+        update_date = request.form.get("updateDate")
+        update_title = request.form.get("updateTitle")
+        update_content = request.form.get("updateContent")
+
+        # Basic validation
+        if not all([update_date, update_title, update_content]):
+            print("Missing update data. All fields are required.")
+            # In a real app, you'd show an error message to the user
+            return redirect(url_for('create_update_form'))
+
+        # Create a dictionary for the new update
+        new_update = {
+            "updateDate": update_date,
+            "updateTitle": update_title,
+            "updateContent": update_content
+        }
+
+        # Load existing updates, add the new one, and save
+        updates = load_updates()
+        updates.append(new_update)
+        save_updates(updates) # This now includes the GitHub push
+
+        # Redirect to the updates page to show the newly added update
+        return redirect(url_for('updates_page'))
+    # If not a POST request, redirect back to the form (though this route only accepts POST)
+    return redirect(url_for('create_update_form'))
+
+
+
 @app.route("/login", methods=["GET", "POST"])
 def login():
     if request.method == "POST":
@@ -1272,24 +1476,39 @@ def view_image():
     )
 
 if __name__ == "__main__":
-    log("App starting up...")
-    if not os.path.exists(UPLOAD_BASE):
+    # Assuming 'log', 'UPLOAD_BASE', 'DOWNLOADS_FOLDER', 'IMAGES_SUBMISSION_FOLDER',
+    # 'sync_image_submissions_local_from_github', 'db', and 'GLOBAL_CHAT_KEY'
+    # are defined elsewhere in your full application.
+    print("App starting up...") # Replaced log() with print() for standalone example
+
+    # Create necessary directories
+    if not os.path.exists(UPLOAD_BASE): # Assuming UPLOAD_BASE is defined
         os.makedirs(UPLOAD_BASE)
-        log(f"Created UPLOAD_BASE: {UPLOAD_BASE}")
-    if not os.path.exists(DOWNLOADS_FOLDER):
+        print(f"Created UPLOAD_BASE: {UPLOAD_BASE}")
+    if not os.path.exists(DOWNLOADS_FOLDER): # Assuming DOWNLOADS_FOLDER is defined
         os.makedirs(DOWNLOADS_FOLDER)
-        log(f"Created DOWNLOADS_FOLDER: {DOWNLOADS_FOLDER}")
-    if not os.path.exists(IMAGES_SUBMISSION_FOLDER): # Create new folder
+        print(f"Created DOWNLOADS_FOLDER: {DOWNLOADS_FOLDER}")
+    if not os.path.exists(IMAGES_SUBMISSION_FOLDER): # Assuming IMAGES_SUBMISSION_FOLDER is defined
         os.makedirs(IMAGES_SUBMISSION_FOLDER)
-        log(f"Created IMAGES_SUBMISSION_FOLDER: {IMAGES_SUBMISSION_FOLDER}")
+        print(f"Created IMAGES_SUBMISSION_FOLDER: {IMAGES_SUBMISSION_FOLDER}")
 
-    # --- Sync image submissions on startup ---
+    # Sync image submissions on startup
+    # Assuming sync_image_submissions_local_from_github() is defined
     sync_success, sync_msg = sync_image_submissions_local_from_github()
-    log(f"Initial image submissions sync result: success={sync_success}, msg={sync_msg}")
-    # --- End sync image submissions on startup ---
+    print(f"Initial image submissions sync result: success={sync_success}, msg={sync_msg}")
 
+    # Initialize global chat (assuming db and GLOBAL_CHAT_KEY are defined)
     chat_group = db.execute("SELECT * FROM group_chats WHERE id = ?", GLOBAL_CHAT_KEY)
     if not chat_group:
         db.execute("INSERT INTO group_chats (id) VALUES (?)", GLOBAL_CHAT_KEY)
-        log(f"Created initial group chat: {GLOBAL_CHAT_KEY}")
-    app.run(debug=True)
+        print(f"Created initial group chat: {GLOBAL_CHAT_KEY}")
+
+    # Ensure the local updates.json file exists and is initialized
+    if not os.path.exists(UPDATES_FILE):
+        with open(UPDATES_FILE, 'w') as f:
+            json.dump([], f) # Initialize with an empty JSON array
+    
+    # Attempt to fetch updates from GitHub on startup to ensure local copy is up-to-date
+    fetch_updates_from_github()
+
+    app.run(debug=True) # Run the Flask app in debug mode
