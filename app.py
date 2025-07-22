@@ -991,7 +991,6 @@ def delete_image_submissions():
 
 # --- End new routes for deleting image submissions ---
 
-
 @app.route("/admin")
 @login_required
 def admin():
@@ -1010,6 +1009,9 @@ def admin():
                 image_folders[folder] = [img for img in os.listdir(folder_path) if not img.startswith('.')]
     
     image_submissions = load_image_submissions_meta() # Load image submissions for admin page
+
+    # ADD THIS LINE:
+    updates = load_updates()
     
     return render_template(
         "admin.html",
@@ -1017,9 +1019,9 @@ def admin():
         group_chats=group_chats,
         downloads=downloads,
         image_folders=image_folders,
-        image_submissions=image_submissions # Pass to admin template
+        image_submissions=image_submissions,
+        updates=updates   # <-- Pass updates to admin.html
     )
-
 @app.route("/delete_user/<username>", methods=["POST"])
 @login_required
 def delete_user(username):
