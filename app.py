@@ -1160,7 +1160,40 @@ def delete_images():
             if os.path.exists(img_path):
                 os.remove(img_path)
     return jsonify({"success": True})
-    
+@app.route("/delete_update", methods=["POST"])
+@login_required
+def delete_update():
+    # Single update delete via form
+    update_date = request.form.get("updateDate")
+    update_title = request.form.get("updateTitle")
+    updates = load_updates()
+    new_updates = [u for u in updates if not (u.get("updateDate") == update_date and u.get("updateTitle") == update_title)]
+    if len(new_updates) != len(updates):
+        save_updates(new_updates)
+        # save_updates will push to GitHub
+        flash("Update deleted and pushed to GitHub.", "success")
+    else:
+        flash("Update not found!", "danger")
+    return redirect(url_for("admin"))
+
+@app.route("/delete_updates", methods=["POST"])
+@login_required
+def delete_updates():
+    # Bulk delete updates via JSON (AJAX)
+    data = request.get_json()
+    updates_to_delete = data.get("updates", [])
+    # Each item in updates_to_delete is expected to be a dict with updateDate and updateTitle
+    updates = load_updates()
+    delete_set = set((u["updateDate"], u["updateTitle"]) for u in updates_to_delete)
+    new_updates = [u for u in updates if (u.get("updateDate"), u.get("updateTitle")) not in delete_set]
+    deleted_count = len(updates) - len(new_updates)
+    if deleted_count > 0:
+        save_updates(new_updates)
+        # save_updates will push to GitHub
+        return jsonify({"success": True, "message": f"Deleted {deleted_count} updates."})
+    else:
+        return jsonify({"success": False, "message": "No matching updates found for deletion."}), 404
+
 @app.route("/upload", methods=["GET", "POST"])
 @login_required
 def upload():

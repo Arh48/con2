@@ -130,6 +130,48 @@
         </div>
     </div>
 
+    <!-- Updates Section (NEW) -->
+    <div class="card shadow-sm mb-4">
+        <div class="card-header bg-secondary text-white d-flex justify-content-between align-items-center">
+            <h5 class="mb-0">Manage Updates</h5>
+            <button class="btn btn-sm btn-outline-light" id="deleteSelectedUpdatesBtn">Delete Selected</button>
+        </div>
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-striped table-hover">
+                    <thead>
+                        <tr>
+                            <th><input type="checkbox" id="selectAllUpdates"></th>
+                            <th>Date</th>
+                            <th>Title</th>
+                            <th>Content</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="updatesTableBody">
+                        {% for update in updates %}
+                        <tr>
+                            <td><input type="checkbox" class="update-checkbox" data-updatedate="{{ update.updateDate }}" data-updatetitle="{{ update.updateTitle }}"></td>
+                            <td>{{ update.updateDate }}</td>
+                            <td>{{ update.updateTitle }}</td>
+                            <td style="max-width:300px; white-space:pre-wrap;">{{ update.updateContent }}</td>
+                            <td>
+                                <form action="/delete_update" method="post" class="d-inline-block"
+                                      onsubmit="return confirm('Are you sure you want to delete this update?');">
+                                    <input type="hidden" name="updateDate" value="{{ update.updateDate }}">
+                                    <input type="hidden" name="updateTitle" value="{{ update.updateTitle }}">
+                                    <button type="submit" class="btn btn-danger btn-sm">Delete</button>
+                                </form>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    <!-- End Updates Section -->
+
     <!-- Images Section (General Chat Images) -->
     <div class="card shadow-sm mb-4">
         <div class="card-header bg-warning text-dark d-flex justify-content-between align-items-center">
@@ -206,7 +248,7 @@
                         {% for submission in image_submissions %}
                         <tr>
                             <td><input type="checkbox" class="image-submission-checkbox" data-submission-id="{{ submission.id }}"></td>
-                            <td>{{ submission.id[:8] }}...</td> {# Show a truncated ID #}
+                            <td>{{ submission.id[:8] }}...</td>
                             <td>{{ submission.uploader }}</td>
                             <td>{{ submission.description }}</td>
                             <td>
@@ -241,7 +283,6 @@
 </div>
 
 <script>
-    // Re-use fullscreen image functions from chat_room.html
     function showFullscreenImage(src) {
         const modal = document.getElementById('fullscreenImageModal');
         const img = document.getElementById('fullscreenImage');
@@ -258,14 +299,13 @@
     });
 
     document.addEventListener('DOMContentLoaded', function() {
-        // --- General Checkbox Logic ---
         function setupSelectAll(checkboxId, itemClass, deleteBtnId, deleteUrl, confirmMessage) {
             const selectAllCheckbox = document.getElementById(checkboxId);
             const itemCheckboxes = document.querySelectorAll(`.${itemClass}`);
             const deleteSelectedBtn = document.getElementById(deleteBtnId);
 
             if (!selectAllCheckbox || !itemCheckboxes.length || !deleteSelectedBtn) {
-                return; // Exit if elements not found
+                return;
             }
 
             selectAllCheckbox.addEventListener('change', function() {
@@ -289,6 +329,10 @@
                         if (itemClass === 'user-checkbox') return cb.dataset.username;
                         if (itemClass === 'chat-checkbox') return cb.dataset.chatid;
                         if (itemClass === 'download-checkbox') return cb.dataset.filename;
+                        if (itemClass === 'update-checkbox') return {
+                            updateDate: cb.dataset.updatedate,
+                            updateTitle: cb.dataset.updatetitle
+                        };
                         if (itemClass === 'image-folder-checkbox') return cb.dataset.key;
                         if (itemClass === 'image-submission-checkbox') return cb.dataset.submissionId;
                         return null;
@@ -302,23 +346,32 @@
 
                 if (confirm(confirmMessage)) {
                     try {
+                        let postBody = {};
+                        if (itemClass === 'update-checkbox') {
+                            postBody = { updates: selectedItems };
+                        } else if (itemClass === 'user-checkbox') {
+                            postBody = { users: selectedItems };
+                        } else if (itemClass === 'chat-checkbox') {
+                            postBody = { chats: selectedItems };
+                        } else if (itemClass === 'download-checkbox') {
+                            postBody = { filenames: selectedItems };
+                        } else if (itemClass === 'image-folder-checkbox') {
+                            postBody = { keys: selectedItems };
+                        } else if (itemClass === 'image-submission-checkbox') {
+                            postBody = { submission_ids: selectedItems };
+                        }
+
                         const response = await fetch(deleteUrl, {
                             method: 'POST',
                             headers: {
                                 'Content-Type': 'application/json'
                             },
-                            body: JSON.stringify({
-                                users: selectedItems, // For users
-                                chats: selectedItems, // For chats
-                                filenames: selectedItems, // For downloads
-                                keys: selectedItems, // For image folders
-                                submission_ids: selectedItems // For image submissions
-                            })
+                            body: JSON.stringify(postBody)
                         });
                         const data = await response.json();
                         if (data.success) {
                             alert(data.message || "Selected items deleted successfully.");
-                            location.reload(); // Reload page to reflect changes
+                            location.reload();
                         } else {
                             alert("Error deleting selected items: " + (data.message || "Unknown error."));
                         }
@@ -330,16 +383,13 @@
             });
         }
 
-        // Setup for existing sections
         setupSelectAll('selectAllUsers', 'user-checkbox', 'deleteSelectedUsersBtn', '/delete_users', 'Are you sure you want to delete selected users?');
         setupSelectAll('selectAllChats', 'chat-checkbox', 'deleteSelectedChatsBtn', '/delete_chats', 'Are you sure you want to delete selected chats?');
         setupSelectAll('selectAllDownloads', 'download-checkbox', 'deleteSelectedDownloadsBtn', '/delete_downloads', 'Are you sure you want to delete selected downloads?');
         setupSelectAll('selectAllImageFolders', 'image-folder-checkbox', 'deleteSelectedImageFoldersBtn', '/delete_images_folders', 'Are you sure you want to delete selected image folders?');
-
-        // Setup for NEW Image Submissions section
+        setupSelectAll('selectAllUpdates', 'update-checkbox', 'deleteSelectedUpdatesBtn', '/delete_updates', 'Are you sure you want to delete selected updates? This will delete them locally and from GitHub.');
         setupSelectAll('selectAllImageSubmissions', 'image-submission-checkbox', 'deleteSelectedImageSubmissionsBtn', '/delete_image_submissions', 'Are you sure you want to delete selected image submissions? This will delete them locally and from GitHub.');
 
-        // Reset Messages Button
         const resetMessagesBtn = document.getElementById('resetMessagesBtn');
         if (resetMessagesBtn) {
             resetMessagesBtn.addEventListener('click', async function() {
