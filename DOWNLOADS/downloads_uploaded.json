@@ -23,5 +23,10 @@
     "filename": "shine_v0.1.6.gb",
     "display": "shine_v0.1.6.gb",
     "description": "Added gate between route 1 and old. colourised house. changed walk speed to match g/s and r/b"
+  },
+  {
+    "filename": "shine_v0.1.7.gb",
+    "display": "shine_v0.1.7.gb",
+    "description": "colour temporarily removed. added west, birdon and font (yes, theres a town named font. stupid). passcode: 5282"
   }
 ]
