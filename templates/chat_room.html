@@ -384,7 +384,7 @@
     const key = "{{ key }}";
     const messagesContainer = document.getElementById('messages');
     const newMessageIndicator = document.getElementById('newMessageIndicator');
-    const currentUser = "{{ current_user.username }}";
+    const currentUser = "{{ current_user.username if current_user.is_authenticated else 'Guest' }}";
     let renderedMessageIds = new Set();
 
     // --- Start Web Worker related changes ---
