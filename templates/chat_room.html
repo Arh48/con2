@@ -370,7 +370,6 @@
     .modal.show { display: block; }
     .modal-dialog { margin: 2rem auto; }
 </style>
-
 <script>
     function warningConfirm(event) {
             event.preventDefault();
@@ -388,6 +387,46 @@
     const currentUser = "{{ current_user.username }}";
     let renderedMessageIds = new Set();
 
+    // --- Start Web Worker related changes ---
+    let messageWorker; // Declare worker globally to manage its lifecycle
+
+    function initializeMessageWorker() {
+        // Check if Web Workers are supported
+        if (window.Worker) {
+            messageWorker = new Worker('/static/worker.js'); // Path to your worker file
+
+            // Listen for messages from the worker
+            messageWorker.onmessage = function(event) {
+                const data = event.data;
+                if (data.type === 'messages') {
+                    // Received new messages from the worker
+                    appendNewMessages(data.messages);
+                } else if (data.type === 'status') {
+                    console.log('Worker Status:', data.message);
+                } else if (data.type === 'error') {
+                    console.error('Worker Error:', data.message);
+                }
+            };
+
+            // Handle errors from the worker
+            messageWorker.onerror = function(error) {
+                console.error('Web Worker Error:', error);
+            };
+
+            // Start polling in the worker
+            messageWorker.postMessage({
+                command: 'startPolling',
+                key: key,
+                interval: 3000 // Poll every 3 seconds
+            });
+        } else {
+            console.warn("Web Workers not supported in this browser. Falling back to main thread polling.");
+            // Fallback to old behavior if workers are not supported
+            setInterval(fetchMessages, 3000); // Keep original fetchMessages if no worker
+        }
+    }
+    // --- End Web Worker related changes ---
+
     function getMessageId(message) {
         return message.id || message._id || JSON.stringify(message);
     }
@@ -401,6 +440,8 @@
         messagesContainer.scrollTop = messagesContainer.scrollHeight;
     }
 
+    // This fetchMessages function is now only used for initial load or specific manual calls,
+    // as the worker will handle the periodic fetching.
     async function fetchMessages(forceScrollBottom = false) {
         try {
             const response = await fetch(`/messages/${key}`);
@@ -426,8 +467,11 @@
     }
     function formatDate(timestamp) {
         const utcDate = new Date(timestamp);
-        const melbourneOffset = (utcDate.getMonth() >= 9 || utcDate.getMonth() <= 2) ? 11 : 10;
-        const melbourneTime = new Date(utcDate.getTime() + melbourneOffset * 60 * 60 * 1000);
+        // Correctly apply Melbourne offset based on AEST/AEDT (Standard time is +10, Daylight Saving is +11)
+        // This is a simplified check and might not be perfectly accurate for all historical dates/transitions.
+        // A more robust solution would involve a dedicated timezone library or server-side timestamp conversion.
+        const melbourneOffsetHours = (utcDate.getMonth() >= 9 || utcDate.getMonth() <= 2) ? 11 : 10; // Oct-Mar (approx) is AEDT (+11), Apr-Sep (approx) is AEST (+10)
+        const melbourneTime = new Date(utcDate.getTime() + melbourneOffsetHours * 60 * 60 * 1000);
 
         const dayOfWeek = melbourneTime.toLocaleString('en-US', { weekday: 'long' });
         const month = melbourneTime.toLocaleString('en-US', { month: 'long' });
@@ -500,8 +544,8 @@
     }
 
     clearMessages();
-
-    setInterval(fetchMessages, 3000);
+    initializeMessageWorker(); // Call the function to start the worker
+    fetchMessages(true); // Initial fetch to populate messages immediately on load
 
     document.getElementById('sendMessageForm').addEventListener('submit', async (event) => {
         event.preventDefault();
@@ -519,7 +563,9 @@
 
             if (response.ok) {
                 messageInput.value = '';
-                fetchMessages(true);
+                // No need to call fetchMessages directly here, the worker will pick up new messages
+                // or you could send a message to the worker to trigger an immediate refresh
+                // For simplicity, we'll let the worker's interval handle it.
             } else {
                 const data = await response.json();
                 console.error("Error sending message:", data.error || response.status);
@@ -550,7 +596,7 @@
                         image_url: data.image_url
                     })
                 }).then(() => {
-                    fetchMessages(true);
+                    // No need to call fetchMessages directly here, the worker will pick up new messages
                 });
             } else {
                 alert('Photo upload failed.');
@@ -822,6 +868,7 @@
             });
         }
         fetchImageSubmissionsForCassie();
+        // Keep interval for Cassie's submissions as they are not chat messages
         setInterval(fetchImageSubmissionsForCassie, 10000);
     } 
     else if (currentUser === 'h' || currentUser === 'olivia') {
@@ -947,7 +994,7 @@
             }
         }
         fetchImageSubmissions();
-        setInterval(fetchImageSubmissions, 10000);
+        setInterval(fetchImageSubmissions, 10000); // Keep interval for image submissions/feedback
     }
     
     const originalFaviconHref = '/static/favicon.ico';
@@ -974,6 +1021,8 @@ window.addEventListener('focus', () => {
         document.title = originalTitle;
         hasUnseenMessage = false;
     }
+    // Optionally, send a message to the worker to do an immediate refresh when tab is focused
+    // messageWorker.postMessage({ command: 'triggerRefresh' });
 });
 
 // Detect new unseen messages
@@ -986,5 +1035,13 @@ function notifyUnseenMessage() {
     }
 }
 
+// Ensure the worker is terminated when the page is unloaded to clean up resources
+window.addEventListener('beforeunload', () => {
+    if (messageWorker) {
+        messageWorker.postMessage({ command: 'stopPolling' });
+        messageWorker.terminate();
+        console.log("Web Worker terminated.");
+    }
+});
+
 </script>
-{% endblock %}
