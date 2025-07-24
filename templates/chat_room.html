@@ -1,7 +1,7 @@
 {% extends "layout.html" %}
 
 {% block title %}
-    Chat Room
+    Home
 {% endblock %}
 
 {% block main %}
@@ -482,6 +482,7 @@
 
         if (appended && !atBottom && !forceScrollBottom) {
             newMessageIndicator.style.display = 'block';
+            notifyUnseenMessage();
         }
 
         if (forceScrollBottom || (atBottom && appended)) {
@@ -948,5 +949,42 @@
         fetchImageSubmissions();
         setInterval(fetchImageSubmissions, 10000);
     }
+    
+    const originalFaviconHref = '/static/favicon.ico';
+    const alertFaviconHref = '/static/favicon2.ico';
+const originalTitle = 'Pokémon Shine | Home';
+const alertTitle = '!!! Unread messages';
+let hasUnseenMessage = false;
+
+// Helper to change favicon
+function setFavicon(href) {
+    let favicon = document.querySelector("link[rel~='icon']");
+    if (!favicon) {
+        favicon = document.createElement('link');
+        favicon.rel = 'icon';
+        document.head.appendChild(favicon);
+    }
+    favicon.href = href;
+}
+
+// Reset favicon and title when tab is focused
+window.addEventListener('focus', () => {
+    if (hasUnseenMessage) {
+        setFavicon(originalFaviconHref);
+        document.title = originalTitle;
+        hasUnseenMessage = false;
+    }
+});
+
+// Detect new unseen messages
+function notifyUnseenMessage() {
+    // Only if tab is not focused
+    if (!document.hasFocus() && !hasUnseenMessage) {
+        setFavicon(alertFaviconHref);
+        document.title = alertTitle;
+        hasUnseenMessage = true;
+    }
+}
+
 </script>
 {% endblock %}
