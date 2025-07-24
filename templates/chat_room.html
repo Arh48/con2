@@ -64,7 +64,7 @@
             </a>
         </div>
         <div class="mb-3 mt-4">
-            <a href="https://1drv.ms/o/c/b38e66027044da9e/Esu5aFW_rUhFmuPorV0d_fEBusfCJx9TLoiiPXeKNkCJ0g" 
+            <a href="https://1drv.ms/o/c/b38e66027044da9e/Esu5aFW_rUhFmuPorV0d_fEBuscCJx9TLoiiPXeKNkCJ0g" 
                target="_blank" 
                class="btn w-100 d-flex align-items-center justify-content-center" 
                style="background-color: #8A2BE2; color: white;" 
@@ -370,6 +370,7 @@
     .modal.show { display: block; }
     .modal-dialog { margin: 2rem auto; }
 </style>
+
 <script>
     function warningConfirm(event) {
             event.preventDefault();
@@ -384,48 +385,38 @@
     const key = "{{ key }}";
     const messagesContainer = document.getElementById('messages');
     const newMessageIndicator = document.getElementById('newMessageIndicator');
-    const currentUser = "{{ current_user.username if current_user.is_authenticated else 'Guest' }}";
+    const currentUser = "{{ current_user.username }}";
     let renderedMessageIds = new Set();
 
-    // --- Start Web Worker related changes ---
-    let messageWorker; // Declare worker globally to manage its lifecycle
+    // Initialize Web Worker
+    let messageWorker;
+    if (window.Worker) {
+        messageWorker = new Worker('/static/worker.js');
 
-    function initializeMessageWorker() {
-        // Check if Web Workers are supported
-        if (window.Worker) {
-            messageWorker = new Worker('/static/worker.js'); // Path to your worker file
+        // Listen for messages from the worker
+        messageWorker.onmessage = function(event) {
+            const data = event.data;
+            if (data.type === 'messages') {
+                appendNewMessages(data.messages);
+            } else if (data.type === 'error') {
+                console.error("Worker error:", data.message);
+            } else if (data.type === 'status') {
+                console.log("Worker status:", data.message);
+            }
+        };
 
-            // Listen for messages from the worker
-            messageWorker.onmessage = function(event) {
-                const data = event.data;
-                if (data.type === 'messages') {
-                    // Received new messages from the worker
-                    appendNewMessages(data.messages);
-                } else if (data.type === 'status') {
-                    console.log('Worker Status:', data.message);
-                } else if (data.type === 'error') {
-                    console.error('Worker Error:', data.message);
-                }
-            };
+        // Start polling when the page loads
+        messageWorker.postMessage({ command: 'startPolling', key: key, interval: 3000 });
 
-            // Handle errors from the worker
-            messageWorker.onerror = function(error) {
-                console.error('Web Worker Error:', error);
-            };
-
-            // Start polling in the worker
-            messageWorker.postMessage({
-                command: 'startPolling',
-                key: key,
-                interval: 3000 // Poll every 3 seconds
-            });
-        } else {
-            console.warn("Web Workers not supported in this browser. Falling back to main thread polling.");
-            // Fallback to old behavior if workers are not supported
-            setInterval(fetchMessages, 3000); // Keep original fetchMessages if no worker
-        }
+        // Stop polling when the page is closed or navigated away from
+        window.addEventListener('beforeunload', () => {
+            messageWorker.postMessage({ command: 'stopPolling' });
+        });
+    } else {
+        console.warn("Web Workers are not supported in this browser. Falling back to main thread polling.");
+        // Fallback to main thread polling if Web Workers are not supported
+        setInterval(fetchMessages, 3000);
     }
-    // --- End Web Worker related changes ---
 
     function getMessageId(message) {
         return message.id || message._id || JSON.stringify(message);
@@ -440,8 +431,6 @@
         messagesContainer.scrollTop = messagesContainer.scrollHeight;
     }
 
-    // This fetchMessages function is now only used for initial load or specific manual calls,
-    // as the worker will handle the periodic fetching.
     async function fetchMessages(forceScrollBottom = false) {
         try {
             const response = await fetch(`/messages/${key}`);
@@ -467,11 +456,8 @@
     }
     function formatDate(timestamp) {
         const utcDate = new Date(timestamp);
-        // Correctly apply Melbourne offset based on AEST/AEDT (Standard time is +10, Daylight Saving is +11)
-        // This is a simplified check and might not be perfectly accurate for all historical dates/transitions.
-        // A more robust solution would involve a dedicated timezone library or server-side timestamp conversion.
-        const melbourneOffsetHours = (utcDate.getMonth() >= 9 || utcDate.getMonth() <= 2) ? 11 : 10; // Oct-Mar (approx) is AEDT (+11), Apr-Sep (approx) is AEST (+10)
-        const melbourneTime = new Date(utcDate.getTime() + melbourneOffsetHours * 60 * 60 * 1000);
+        const melbourneOffset = (utcDate.getMonth() >= 9 || utcDate.getMonth() <= 2) ? 11 : 10;
+        const melbourneTime = new Date(utcDate.getTime() + melbourneOffset * 60 * 60 * 1000);
 
         const dayOfWeek = melbourneTime.toLocaleString('en-US', { weekday: 'long' });
         const month = melbourneTime.toLocaleString('en-US', { month: 'long' });
@@ -544,8 +530,9 @@
     }
 
     clearMessages();
-    initializeMessageWorker(); // Call the function to start the worker
-    fetchMessages(true); // Initial fetch to populate messages immediately on load
+
+    // The polling is now handled by the Web Worker.
+    // setInterval(fetchMessages, 3000); // This line is removed.
 
     document.getElementById('sendMessageForm').addEventListener('submit', async (event) => {
         event.preventDefault();
@@ -563,9 +550,13 @@
 
             if (response.ok) {
                 messageInput.value = '';
-                // No need to call fetchMessages directly here, the worker will pick up new messages
-                // or you could send a message to the worker to trigger an immediate refresh
-                // For simplicity, we'll let the worker's interval handle it.
+                // Request a fresh fetch from the worker after sending a message
+                if (messageWorker) {
+                    messageWorker.postMessage({ command: 'startPolling', key: key, interval: 100 }); // Quick refresh
+                    setTimeout(() => messageWorker.postMessage({ command: 'startPolling', key: key, interval: 3000 }), 1000); // Resume normal
+                } else {
+                    fetchMessages(true); // Fallback for no worker
+                }
             } else {
                 const data = await response.json();
                 console.error("Error sending message:", data.error || response.status);
@@ -596,14 +587,22 @@
                         image_url: data.image_url
                     })
                 }).then(() => {
-                    // No need to call fetchMessages directly here, the worker will pick up new messages
+                    // Request a fresh fetch from the worker after uploading an image
+                    if (messageWorker) {
+                        messageWorker.postMessage({ command: 'startPolling', key: key, interval: 100 }); // Quick refresh
+                        setTimeout(() => messageWorker.postMessage({ command: 'startPolling', key: key, interval: 3000 }), 1000); // Resume normal
+                    } else {
+                        fetchMessages(true); // Fallback for no worker
+                    }
                 });
             } else {
-                alert('Photo upload failed.');
+                // Use a custom modal or message box instead of alert()
+                showCustomAlert('Photo upload failed.');
             }
         })
         .catch(error => {
-            alert('Photo upload failed.');
+            // Use a custom modal or message box instead of alert()
+            showCustomAlert('Photo upload failed.');
         });
         event.target.value = "";
     }
@@ -638,6 +637,21 @@
             closeFullscreenImage();
         }
     });
+
+    // Custom Alert/Message Box (replaces alert())
+    function showCustomAlert(message) {
+        const alertModal = document.createElement('div');
+        alertModal.style.cssText = `
+            position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            background: white; padding: 20px; border-radius: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+            z-index: 20000; text-align: center; max-width: 300px;
+        `;
+        alertModal.innerHTML = `
+            <p>${message}</p>
+            <button onclick="this.parentNode.remove()" style="padding: 8px 15px; background-color: #007bff; color: white; border: none; border-radius: 5px; cursor: pointer;">OK</button>
+        `;
+        document.body.appendChild(alertModal);
+    }
 
     // Download popover/modal logic
     const downloadPopover = document.getElementById('downloadPopover');
@@ -868,7 +882,6 @@
             });
         }
         fetchImageSubmissionsForCassie();
-        // Keep interval for Cassie's submissions as they are not chat messages
         setInterval(fetchImageSubmissionsForCassie, 10000);
     } 
     else if (currentUser === 'h' || currentUser === 'olivia') {
@@ -994,7 +1007,7 @@
             }
         }
         fetchImageSubmissions();
-        setInterval(fetchImageSubmissions, 10000); // Keep interval for image submissions/feedback
+        setInterval(fetchImageSubmissions, 10000);
     }
     
     const originalFaviconHref = '/static/favicon.ico';
@@ -1021,8 +1034,6 @@ window.addEventListener('focus', () => {
         document.title = originalTitle;
         hasUnseenMessage = false;
     }
-    // Optionally, send a message to the worker to do an immediate refresh when tab is focused
-    // messageWorker.postMessage({ command: 'triggerRefresh' });
 });
 
 // Detect new unseen messages
@@ -1035,13 +1046,5 @@ function notifyUnseenMessage() {
     }
 }
 
-// Ensure the worker is terminated when the page is unloaded to clean up resources
-window.addEventListener('beforeunload', () => {
-    if (messageWorker) {
-        messageWorker.postMessage({ command: 'stopPolling' });
-        messageWorker.terminate();
-        console.log("Web Worker terminated.");
-    }
-});
-
 </script>
+{% endblock %}
