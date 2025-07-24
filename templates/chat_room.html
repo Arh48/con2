@@ -8,10 +8,8 @@
 
 <div class="container mt-4">
   <div class="row">
-    <!-- Left column: Conditional content based on username -->
     {% if current_user.username == 'cassie_user' %}
     <div class="col-lg-6 col-md-5">
-        <!-- Cassie's Image Submission Form -->
         <div class="card mt-4 p-3 shadow-sm bg-light">
             <h5 class="mb-3">📸 Submit Image for Review</h5>
             <form id="imageSubmissionForm">
@@ -27,18 +25,15 @@
                 <div id="imageSubmitStatus" class="mt-2 text-center" style="display:none;"></div>
             </form>
         </div>
-        <!-- Display previous submissions for Cassie -->
         <div class="card mt-4 p-3 shadow-sm bg-light">
             <h5 class="mb-3">Previous Submissions</h5>
             <div id="cassiePreviousSubmissions" class="list-group">
-                <!-- Previous submissions will be loaded here by JS -->
                 <p class="text-muted">Loading submissions...</p>
             </div>
         </div>
     </div>
     {% elif current_user.username in ['h', 'olivia'] %}
     <div class="col-lg-6 col-md-5">
-        <!-- Image Feedback Section -->
         <div class="card mt-4 p-3 shadow-sm bg-light">
             <h5 class="mb-3">🖼️ Image Submissions & Feedback</h5>
             <div id="currentImageSubmission" class="mb-4">
@@ -54,7 +49,6 @@
             <hr>
             <h6>Previous Submissions:</h6>
             <div id="previousImageSubmissions" class="list-group">
-                <!-- Previous submissions will be loaded here by JS -->
                 <p class="text-muted">Loading submissions...</p>
             </div>
         </div>
@@ -72,7 +66,6 @@
               <i class="fas fa-book me-2"></i> Documentation in OneNote
             </a>
         </div>
-      <!-- Downloads Modal Button -->
       <div class="mb-2">
         <button class="btn btn-secondary w-100" type="button" id="downloadPopoverBtn">
           <i class="bi bi-download me-2"></i> Download Files
@@ -105,7 +98,6 @@
           </div>
         </div>
       </div>
-      <!-- To-Do List -->
       <div class="card mt-4 p-3 shadow-sm bg-light">
         <h5 class="mb-3">📝 To-Do List</h5>
         <div id="todo-list" class="mb-2"></div>
@@ -117,7 +109,6 @@
         <textarea id="edit-todo-area" class="form-control mb-2" style="display:none; min-height:120px"></textarea>
         <button class="btn btn-primary btn-sm mb-2" id="save-todo-btn" style="display:none;">Save Changes</button>
       </div>
-      <!-- Notes -->
       <div class="card mt-4 p-3 shadow-sm bg-light">
         <h5 class="mb-3">🗒️ Notes</h5>
         <textarea id="notes-area" class="form-control mb-2" style="min-height:120px" placeholder="Write shared notes here..."></textarea>
@@ -126,7 +117,6 @@
       </div>
     </div>
     {% else %}
-    <!-- Original left column content for other users -->
     <div class="col-lg-6 col-md-5">
         <div class="mb-3">
             <a href="https://drive.google.com/drive/folders/1ASJykXi4KothiRkZMkX3_t-uLIjaKAVA?usp=sharing" target="_blank" class="btn btn-info w-100 d-flex align-items-center justify-content-center">
@@ -165,7 +155,6 @@
           </div>
         </div>
       </div>
-      <!-- To-Do List -->
       <div class="card mt-4 p-3 shadow-sm bg-light">
         <h5 class="mb-3">📝 To-Do List</h5>
         <div id="todo-list" class="mb-2"></div>
@@ -177,7 +166,6 @@
         <textarea id="edit-todo-area" class="form-control mb-2" style="display:none; min-height:120px"></textarea>
         <button class="btn btn-primary btn-sm mb-2" id="save-todo-btn" style="display:none;">Save Changes</button>
       </div>
-      <!-- Notes -->
       <div class="card mt-4 p-3 shadow-sm bg-light">
         <h5 class="mb-3">🗒️ Notes</h5>
         <textarea id="notes-area" class="form-control mb-2" style="min-height:120px" placeholder="Write shared notes here..."></textarea>
@@ -187,15 +175,13 @@
     </div>
     {% endif %}
 
-    <!-- Main chat column -->
     <div class="{% if current_user.username == 'cassie_user' or current_user.username in ['h', 'olivia'] %}col-lg-6 col-md-7{% else %}col-lg-6 col-md-7{% endif %} col-12">
       <div class="d-flex justify-content-between align-items-center">
         <h3 class="mb-0">Group Chat</h3>
       </div>
       <div class="chat-window mt-4" style="position: relative;">
         <div id="messages" class="message-box border rounded p-3">
-          <!-- messages will be inserted here -->
-        </div>
+          </div>
         <button id="newMessageIndicator" title="New messages below"
                 style="display:none; position: absolute; right: -52px; bottom: 24px; z-index: 10; background: transparent; border: none; box-shadow: none;">
           <span class="fs-2 text-danger">
@@ -221,7 +207,6 @@
         <button onclick="closeFullscreenImage()" style="position:absolute; top:32px; right:40px; font-size:2rem; background:transparent; border:none; color:white; z-index:20001;">&times;</button>
       </div>
     </div>
-    <!-- Below chat: Info/game for mobile - Conditional visibility -->
     {% if current_user.username not in ['cassie_user', 'h', 'olivia'] %}
     <div class="col-12 d-md-none mt-4">
       <div class="p-4 h-100 d-flex flex-column justify-content-center align-items-center" style="background: rgba(240,240,240,0.7); border-radius: 16px;">
@@ -510,9 +495,15 @@
             }
         });
 
+        // If new messages were appended AND the document is hidden,
+        // then notify of unseen messages, regardless of scroll position.
+        if (appended && document.visibilityState === 'hidden') {
+            notifyUnseenMessage();
+        }
+
+        // The logic for the newMessageIndicator itself remains dependent on !atBottom
         if (appended && !atBottom && !forceScrollBottom) {
             newMessageIndicator.style.display = 'block';
-            notifyUnseenMessage();
         }
 
         if (forceScrollBottom || (atBottom && appended)) {
@@ -853,7 +844,8 @@
                     console.error("Error fetching Cassie's submissions:", data.error || response.status);
                     cassiePreviousSubmissionsDiv.innerHTML = '<p class="text-danger">Failed to load submissions.</p>';
                 }
-            } catch (error) {
+            }
+            catch (error) {
                 console.error("Fetch error for Cassie's submissions:", error);
                 cassiePreviousSubmissionsDiv.innerHTML = '<p class="text-danger">Network error loading submissions.</p>';
             }
