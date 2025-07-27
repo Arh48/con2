@@ -1473,6 +1473,16 @@ def upload_image(key):
 def serve_image(key, filename):
     return send_from_directory(os.path.join(UPLOAD_BASE, str(key)), filename)
 
+@app.route("/github_how")
+@login_required # Ensure user is logged in
+def how():
+    # Check if the current user's username is 'h' or 'olivia'
+    if current_user.username in ["h", "olivia"]:
+        return render_template('github.html')
+    else:
+        flash("You are not authorized to view this page.", "danger")
+        return redirect('/') 
+
 @app.route("/emulator")
 def emulator():
     return render_template("index.html")
