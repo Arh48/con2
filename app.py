@@ -1473,7 +1473,7 @@ def upload_image(key):
 def serve_image(key, filename):
     return send_from_directory(os.path.join(UPLOAD_BASE, str(key)), filename)
 
-@app.route("/github_how")
+@app.route("/how")
 @login_required # Ensure user is logged in
 def how():
     # Check if the current user's username is 'h' or 'olivia'
