@@ -15,7 +15,7 @@
       color: #eee;
       font-family: sans-serif;
       text-align: center;
-      overscroll-behavior-y: contain; /* Prevent pull-to-refresh on mobile */
+      overscroll-behavior-y: contain;
     }
     #gb {
       display: block;
@@ -29,21 +29,22 @@
     #controls {
       margin: 1.5em 0;
     }
-    input[type="file"] {
+    input[type="file"], select, button {
       color: #eee;
       background: #444;
       border: 1px solid #555;
       padding: 0.25em;
+      margin: 0.25em;
     }
     #status {
       margin-top: 1em;
       color: #9f9;
       font-size: 1.1em;
     }
-
+    
     /* --- Mobile On-Screen Controls --- */
     #mobile-controls {
-      display: none; /* Hidden by default */
+      display: none;
       position: fixed;
       bottom: 0;
       left: 0;
@@ -135,29 +136,29 @@
       }
       #mobile-controls {
         display: flex;
-        order: 3; /* On-screen buttons at the bottom */
-        position: relative; /* Change from fixed */
-        height: auto; /* Let content define height */
+        order: 3;
+        position: relative;
+        height: auto;
         min-height: 140px;
       }
       #gb {
-        order: 2; /* Canvas in the middle */
+        order: 2;
         width: 100%;
         margin: 0;
         border: none;
-        flex-grow: 1; /* Allow canvas to fill space */
-        object-fit: contain; /* Maintain aspect ratio */
-        min-height: 0; /* Critical for flexbox resizing */
+        flex-grow: 1;
+        object-fit: contain;
+        min-height: 0;
       }
       #controls {
-        order: 1; /* File inputs at the top */
+        order: 1;
         margin: 0;
         padding: 10px;
         background: #333;
-        flex-shrink: 0; /* Prevent controls from shrinking */
+        flex-shrink: 0;
       }
       h1, #status {
-        display: none; /* Hide for a cleaner mobile UI */
+        display: none;
       }
     }
   </style>
@@ -165,10 +166,16 @@
 <body>
   <h1>Game Boy Emulator</h1>
   <div id="controls">
+    <p>Upload a ROM, drag and drop, or choose from your server's library:</p>
     <input type="file" id="romInput" accept=".gb,.gbc" />
     <input type="file" id="savInput" accept=".sav,.sa2" style="display:none;" />
+    
+    <select id="serverRomSelect">
+      <option value="">-- Choose ROM from Server --</option>
+    </select>
+    
     <button id="startBtn" disabled>Start</button>
-    <button id="saveBtn" style="display:none;">Save</button>
+    <button id="saveBtn" style="display:none;">Save Game</button>
   </div>
   <canvas id="gb" width="160" height="144"></canvas>
   <div id="status"></div>
@@ -201,14 +208,76 @@
     const startBtn = document.getElementById('startBtn');
     const saveBtn = document.getElementById('saveBtn');
     const status = document.getElementById('status');
+    const serverRomSelect = document.getElementById('serverRomSelect');
+    
+    // Function to fetch ROM list from server and populate the dropdown
+    async function fetchServerRoms() {
+      try {
+        const response = await fetch('/api/list-roms');
+        if (!response.ok) throw new Error("Could not fetch server ROM list.");
+        const roms = await response.json();
+        
+        roms.forEach(rom => {
+          const option = document.createElement('option');
+          option.value = rom;
+          option.textContent = rom;
+          serverRomSelect.appendChild(option);
+        });
+      } catch (error) {
+        console.error("Error fetching ROMs:", error);
+        const option = document.createElement('option');
+        option.textContent = "Error loading ROMs";
+        serverRomSelect.appendChild(option);
+        serverRomSelect.disabled = true;
+      }
+    }
 
+    // Call this function when the page loads
+    window.addEventListener('load', fetchServerRoms);
+
+    // Event listener for when a file is uploaded
     romInput.addEventListener('change', () => {
       romFile = romInput.files[0];
       status.textContent = romFile ? `Loaded ROM: ${romFile.name}` : '';
       startBtn.disabled = !romFile;
-      savInput.style.display = 'inline-block'; // Make sav input visible
+      savInput.style.display = 'inline-block';
       savFile = null;
       saveBtn.style.display = 'none';
+      serverRomSelect.value = ""; // Clear server selection
+    });
+    
+    // Event listener for when a server ROM is selected
+    serverRomSelect.addEventListener('change', async () => {
+      const selectedRomName = serverRomSelect.value;
+      if (selectedRomName) {
+        status.textContent = `Loading server ROM: ${selectedRomName}`;
+        startBtn.disabled = true;
+        romInput.value = ""; // Clear file input
+        savInput.style.display = 'none';
+        saveBtn.style.display = 'none';
+
+        try {
+          // Fetch the ROM file from the server
+          const response = await fetch(`/roms/${selectedRomName}`);
+          if (!response.ok) throw new Error("Failed to fetch ROM.");
+          
+          const romBlob = await response.blob();
+          // Create a File object from the blob to use with the emulator
+          romFile = new File([romBlob], selectedRomName);
+          savFile = null;
+          startBtn.disabled = false;
+          status.textContent = `Ready to play: ${romFile.name}`;
+        } catch (error) {
+          status.textContent = `Error loading ROM: ${error.message}`;
+          startBtn.disabled = true;
+          romFile = null;
+        }
+      } else {
+        romFile = null;
+        startBtn.disabled = true;
+        status.textContent = "Please select a ROM or upload one.";
+        savInput.style.display = 'inline-block';
+      }
     });
 
     savInput.addEventListener('change', () => {
@@ -236,7 +305,6 @@
     });
 
     saveBtn.addEventListener('click', () => {
-      // The default save file name will be based on the ROM name
       const saveName = romFile.name.substring(0, romFile.name.lastIndexOf('.')) + ".sav";
       gb.save(saveName);
     });
@@ -250,24 +318,25 @@
       let sav = files.find(f => /\.sav$|\.sa2$/.test(f.name));
       if (rom) {
         romFile = rom;
-        romInput.value = ""; // Reset file input
+        romInput.value = "";
         savFile = sav || null;
         status.textContent = `Loaded ROM: ${romFile.name}` + (savFile ? ` | Save: ${savFile.name}` : '');
         startBtn.disabled = false;
         savInput.style.display = 'inline-block';
-        await startBtn.click(); // Automatically start on drop
+        serverRomSelect.value = ""; // Clear server selection on drag/drop
+        await startBtn.click();
       }
     });
     
     // --- Mobile Controls Event Listeners ---
     const mobileControls = {
-      'btn-up':     { press: () => gb.wasm.instance.exports.press_up(),     release: () => gb.wasm.instance.exports.release_up() },
-      'btn-down':   { press: () => gb.wasm.instance.exports.press_down(),   release: () => gb.wasm.instance.exports.release_down() },
-      'btn-left':   { press: () => gb.wasm.instance.exports.press_left(),   release: () => gb.wasm.instance.exports.release_left() },
-      'btn-right':  { press: () => gb.wasm.instance.exports.press_right(),  release: () => gb.wasm.instance.exports.release_right() },
-      'btn-a':      { press: () => gb.wasm.instance.exports.press_a(),      release: () => gb.wasm.instance.exports.release_a() },
-      'btn-b':      { press: () => gb.wasm.instance.exports.press_b(),      release: () => gb.wasm.instance.exports.release_b() },
-      'btn-start':  { press: () => gb.wasm.instance.exports.press_start(),  release: () => gb.wasm.instance.exports.release_start() },
+      'btn-up':     { press: () => gb.wasm.instance.exports.press_up(),    release: () => gb.wasm.instance.exports.release_up() },
+      'btn-down':   { press: () => gb.wasm.instance.exports.press_down(),  release: () => gb.wasm.instance.exports.release_down() },
+      'btn-left':   { press: () => gb.wasm.instance.exports.press_left(),  release: () => gb.wasm.instance.exports.release_left() },
+      'btn-right':  { press: () => gb.wasm.instance.exports.press_right(), release: () => gb.wasm.instance.exports.release_right() },
+      'btn-a':      { press: () => gb.wasm.instance.exports.press_a(),     release: () => gb.wasm.instance.exports.release_a() },
+      'btn-b':      { press: () => gb.wasm.instance.exports.press_b(),     release: () => gb.wasm.instance.exports.release_b() },
+      'btn-start':  { press: () => gb.wasm.instance.exports.press_start(), release: () => gb.wasm.instance.exports.release_start() },
       'btn-select': { press: () => gb.wasm.instance.exports.press_select(), release: () => gb.wasm.instance.exports.release_select() }
     };
 
