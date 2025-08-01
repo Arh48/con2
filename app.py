@@ -1483,9 +1483,32 @@ def how():
         flash("You are not authorized to view this page.", "danger")
         return redirect('/') 
 
+
+ROM_DIR = "DOWNLOADS"
+
+@app.route("/")
+def index():
+    return render_template("index.html")
+
 @app.route("/emulator")
 def emulator():
     return render_template("index.html")
+
+# New API endpoint to list available ROMs
+@app.route("/api/list-roms")
+def list_roms():
+    try:
+        rom_files = [f for f in os.listdir(ROM_DIR) if f.endswith(('.gb', '.gbc'))]
+        return jsonify(rom_files)
+    except FileNotFoundError:
+        return jsonify({"error": "ROM directory not found."}), 404
+
+# New route to serve ROM files securely
+@app.route("/roms/<filename>")
+def get_rom(filename):
+    return send_from_directory(ROM_DIR, filename)
+
+
 @app.route("/view_image")
 @login_required
 def view_image():
