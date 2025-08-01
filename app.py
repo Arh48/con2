@@ -1486,10 +1486,6 @@ def how():
 
 ROM_DIR = "DOWNLOADS"
 
-@app.route("/")
-def index():
-    return render_template("index.html")
-
 @app.route("/emulator")
 def emulator():
     return render_template("index.html")
