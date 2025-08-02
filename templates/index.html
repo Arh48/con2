@@ -168,9 +168,7 @@
   <div id="controls">
     <p>Upload a ROM, drag and drop, or choose from your server's library:</p>
     <input type="file" id="romInput" accept=".gb,.gbc" />
-    <input type="file" id="savInput" accept=".sav,.sa2" style="display:none;" />
-    
-    <select id="serverRomSelect">
+    <input type="file" id="savInput" accept=".sav,.sa2" /> <select id="serverRomSelect">
       <option value="">-- Choose ROM from Server --</option>
     </select>
     
@@ -210,6 +208,25 @@
     const status = document.getElementById('status');
     const serverRomSelect = document.getElementById('serverRomSelect');
     
+    // Function to update the start button's disabled state
+    function updateStartButtonState() {
+        startBtn.disabled = !romFile;
+    }
+
+    // Function to update the status text
+    function updateStatusText() {
+        let text = "";
+        if (romFile) {
+            text += `Loaded ROM: ${romFile.name}`;
+        } else {
+            text += "Please select a ROM or upload one.";
+        }
+        if (savFile) {
+            text += ` | Save: ${savFile.name}`;
+        }
+        status.textContent = text;
+    }
+
     // Function to fetch ROM list from server and populate the dropdown
     async function fetchServerRoms() {
       try {
@@ -233,56 +250,56 @@
     }
 
     // Call this function when the page loads
-    window.addEventListener('load', fetchServerRoms);
+    window.addEventListener('load', () => {
+        fetchServerRoms();
+        updateStatusText(); // Initial status text
+        updateStartButtonState();
+    });
 
-    // Event listener for when a file is uploaded
+    // Event listener for when a ROM file is uploaded
     romInput.addEventListener('change', () => {
       romFile = romInput.files[0];
-      status.textContent = romFile ? `Loaded ROM: ${romFile.name}` : '';
-      startBtn.disabled = !romFile;
-      savInput.style.display = 'inline-block';
-      savFile = null;
-      saveBtn.style.display = 'none';
       serverRomSelect.value = ""; // Clear server selection
+      updateStatusText();
+      updateStartButtonState();
+      saveBtn.style.display = 'none'; // Hide save button until game starts
     });
     
+    // Event listener for when a save file is uploaded
+    savInput.addEventListener('change', () => {
+      savFile = savInput.files[0];
+      updateStatusText();
+    });
+
     // Event listener for when a server ROM is selected
     serverRomSelect.addEventListener('change', async () => {
       const selectedRomName = serverRomSelect.value;
       if (selectedRomName) {
         status.textContent = `Loading server ROM: ${selectedRomName}`;
-        startBtn.disabled = true;
-        romInput.value = ""; // Clear file input
-        savInput.style.display = 'none';
-        saveBtn.style.display = 'none';
+        startBtn.disabled = true; // Disable start button while fetching
+        romInput.value = ""; // Clear local ROM file input
+        saveBtn.style.display = 'none'; // Hide save button
 
         try {
           // Fetch the ROM file from the server
           const response = await fetch(`/roms/${selectedRomName}`);
-          if (!response.ok) throw new Error("Failed to fetch ROM.");
+          if (!response.ok) throw new Error(`Failed to fetch ROM: ${response.statusText}`);
           
           const romBlob = await response.blob();
           // Create a File object from the blob to use with the emulator
           romFile = new File([romBlob], selectedRomName);
-          savFile = null;
-          startBtn.disabled = false;
-          status.textContent = `Ready to play: ${romFile.name}`;
+          updateStatusText();
+          updateStartButtonState();
         } catch (error) {
           status.textContent = `Error loading ROM: ${error.message}`;
-          startBtn.disabled = true;
           romFile = null;
+          updateStartButtonState(); // Ensure button is disabled on error
         }
       } else {
         romFile = null;
-        startBtn.disabled = true;
-        status.textContent = "Please select a ROM or upload one.";
-        savInput.style.display = 'inline-block';
+        updateStatusText();
+        updateStartButtonState();
       }
-    });
-
-    savInput.addEventListener('change', () => {
-      savFile = savInput.files[0];
-      status.textContent += savFile ? ` | Save: ${savFile.name}` : '';
     });
 
     startBtn.addEventListener('click', async () => {
@@ -291,22 +308,38 @@
       status.textContent = "Loading and starting emulator...";
 
       const romBuf = await romFile.arrayBuffer();
-      let savBuf = savFile ? await savFile.arrayBuffer() : new Uint8Array(32 * 1024).buffer;
+      let savBuf;
+      if (savFile) {
+        savBuf = await savFile.arrayBuffer();
+      } else {
+        // Provide an empty save buffer if no local save file is selected
+        savBuf = new Uint8Array(32 * 1024).buffer; // Common Game Boy save size
+      }
 
-      await gb.start({
-        wasmPath: "static/gb.wasm",
-        canvasId: "gb",
-        rom: romBuf,
-        sav: savBuf
-      });
+      try {
+        await gb.start({
+          wasmPath: "static/gb.wasm",
+          canvasId: "gb",
+          rom: romBuf,
+          sav: savBuf
+        });
 
-      status.textContent = `Running: ${romFile.name}`;
-      saveBtn.style.display = 'inline-block';
+        status.textContent = `Running: ${romFile.name}` + (savFile ? ` with save: ${savFile.name}` : '');
+        saveBtn.style.display = 'inline-block';
+      } catch (error) {
+        status.textContent = `Error starting emulator: ${error.message}`;
+        console.error("Emulator start error:", error);
+        startBtn.disabled = false; // Re-enable start button on error
+      }
     });
 
     saveBtn.addEventListener('click', () => {
-      const saveName = romFile.name.substring(0, romFile.name.lastIndexOf('.')) + ".sav";
-      gb.save(saveName);
+      if (romFile) {
+        const saveName = romFile.name.substring(0, romFile.name.lastIndexOf('.')) + ".sav";
+        gb.save(saveName);
+      } else {
+        alert("No ROM loaded to save game for.");
+      }
     });
 
     // Drag-and-drop support
@@ -316,15 +349,22 @@
       const files = [...e.dataTransfer.files];
       let rom = files.find(f => /\.gbc?$/.test(f.name));
       let sav = files.find(f => /\.sav$|\.sa2$/.test(f.name));
+      
       if (rom) {
         romFile = rom;
-        romInput.value = "";
-        savFile = sav || null;
-        status.textContent = `Loaded ROM: ${romFile.name}` + (savFile ? ` | Save: ${savFile.name}` : '');
-        startBtn.disabled = false;
-        savInput.style.display = 'inline-block';
-        serverRomSelect.value = ""; // Clear server selection on drag/drop
-        await startBtn.click();
+        romInput.value = ""; // Clear local ROM input
+        serverRomSelect.value = ""; // Clear server selection
+      }
+      if (sav) {
+        savFile = sav;
+        savInput.value = ""; // Clear local SAV input (though not strictly necessary as savFile is set)
+      }
+
+      updateStatusText();
+      updateStartButtonState();
+      
+      if (romFile) {
+        await startBtn.click(); // Automatically start if a ROM is dropped
       }
     });
     
